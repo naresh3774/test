@@ -46,3 +46,17 @@ Write-Host "ARM_CLIENT_ID: $env:ARM_CLIENT_ID"
 Write-Host "ARM_CLIENT_SECRET: $env:ARM_CLIENT_SECRET"
 Write-Host "ARM_SUBSCRIPTION_ID: $env:ARM_SUBSCRIPTION_ID"
 Write-Host "ARM_TENANT_ID: $env:ARM_TENANT_ID"
+
+
+
+# Making the Script Accessible from Any Location ()
+# Place the script in a folder (e.g., C:\scripts).
+
+# Add the folder to the PATH environment variable so you can run it from anywhere on your system:
+
+# Open Environment Variables via the Start menu.
+# Under User variables, find Path, click Edit, and add C:\scripts.
+# In System Properties, click Environment Variables.
+# Click OK and restart any open command prompts to apply the changes.
+# Now you can run the script from any location:
+# set_env.ps1
