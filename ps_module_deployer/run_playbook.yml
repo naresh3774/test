@@ -1,0 +1,6 @@
+# main.yml
+- name: Download, upload to Azure Storage, and configure PowerShell modules
+  hosts: all
+  roles:
+      - role: download_and_upload_nupkg
+      - role: install_packages

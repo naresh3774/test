@@ -1,0 +1,12 @@
+---
+- name: "Download .nupkg files and upload to Azure Blob Storage."
+  ansible.builtin.include_tasks: download.yml
+  loop: "{{ packages }}"
+  loop_control:
+      loop_var: package
+
+- name: "Upload .nupkg files to storage account"
+  ansible.builtin.include_tasks: upload.yml
+  loop: "{{ packages }}"
+  loop_control:
+      loop_var: package

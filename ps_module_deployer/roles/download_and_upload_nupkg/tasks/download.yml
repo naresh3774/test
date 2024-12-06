@@ -1,0 +1,26 @@
+---
+# tasks/main.yml
+- name: "Ensure destination directory exists"
+  ansible.builtin.file:
+      path: "{{ destination_dir }}"
+      state: directory
+      mode: "0755"
+
+- name: "Download .nupkg files from PowerShell Gallery"
+  ansible.builtin.get_url:
+      url: "{{ base_url }}/{{ item.name }}/{{ item.version }}"
+      dest: "{{ destination_dir }}/{{ item.name }}-{{ item.version }}.nupkg"
+      mode: "0644"
+  loop: "{{ packages }}"
+  loop_control:
+      label: "{{ item.name }}"
+  register: download_result
+  ignore_errors: true
+
+- name: "Check if all downloads were successful"
+  ansible.builtin.fail:
+      msg: "Failed to download {{ item.item.name }}.nupkg from PowerShell Gallery. URL: {{ base_url }}/{{ item.item.name }}/{{ item.item.version }}"
+  when: item.failed or (item.status is defined and item.status != 200)
+  loop: "{{ download_result.results }}"
+  loop_control:
+      label: "{{ item.item.name }}"

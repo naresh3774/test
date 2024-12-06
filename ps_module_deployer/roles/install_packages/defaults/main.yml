@@ -1,0 +1,2 @@
+# Directory to copy packages to on Windows
+windows_destination_dir: "C:\\NuGetPackages"

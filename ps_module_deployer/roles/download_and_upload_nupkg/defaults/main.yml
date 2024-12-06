@@ -1,0 +1,4 @@
+# defaults/main.yml
+---
+base_url: "https://www.powershellgallery.com/api/v2/package"
+destination_dir: "{{ role_path }}/files"
