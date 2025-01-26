@@ -38,26 +38,44 @@ variable "global_settings" {
 ###################################################################################
 ## Resource Group Variables
 ###################################################################################
-# variable "resource_groups_name" {}
+variable "resource_group_name" {
+  description = "rg"
+  # type        = string
+  default = {}
+}
 variable "data_sources" {}
 
 
 ###################################################################################
 ## Networking Variables
 ###################################################################################
-variable "networking" {
-  description = ""
+variable "vnet_name" {
+  description = "The name of the Virtual Network."
+  type        = string
+}
+
+variable "address_space" {
+  description = "The address space for the Virtual Network."
+  type        = list(string)
+}
+
+variable "subnet_configs" {
+  description = "A list of subnet configurations, including name and address prefixes."
+  type = list(object({
+    name            = string
+    address_prefixes = list(string)
+  }))
+}
+
+#################################################
+variable "tags" {
+  description = "A mapping of tags to assign to resources."
+  type        = map(string)
   default     = {}
 }
 
 variable "location" {
   description = "The Azure location where resources will be deployed."
-  # type        = string
-  default = {}
-}
-
-variable "resource_group_name" {
-  description = "rg"
   # type        = string
   default = {}
 }

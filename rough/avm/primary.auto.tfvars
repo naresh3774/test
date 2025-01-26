@@ -53,3 +53,7 @@ data_sources = {
 # Resource Group
 resource_group_name = "shrd"
 location            = "East US"
+
+# virtual network
+vnet_name           = "my-vnet"
+address_space  = ["10.0.0.0/16"]
