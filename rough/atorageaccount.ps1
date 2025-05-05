@@ -4,6 +4,15 @@ $newIpRules = @(
     "10.0.0.0/16"
 )
 
+# Define variables for specific subscriptions or storage accounts
+$targetResourceGroupName = "" # Specify a resource group name or leave empty to target all resource groups
+$targetSubscriptions = @() # Add specific subscription IDs here, or leave empty for all subscriptions
+$targetStorageAccounts = @() # Add specific storage account names here, or leave empty for all storage accounts
+$newIpRules = @(
+    "192.168.0.0/24",
+    "10.0.0.0/16"
+)
+
 # Loop through all subscriptions
 $azSubs = Get-AzSubscription
 
