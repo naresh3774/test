@@ -1,2 +1,1 @@
-# groovy practice
-# Terraform
+test only

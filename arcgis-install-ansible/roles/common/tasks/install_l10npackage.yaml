@@ -1,5 +1,0 @@
----
-- name: apt-get localized package
-  apt:
-    name: gettext-base
-    state: present

@@ -1,3 +1,0 @@
----
-- name: install 3d web styles
-  win_shell: "{{ win_setup_webstyle_msi_process_command }}"

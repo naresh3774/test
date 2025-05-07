@@ -1,5 +1,0 @@
-- name: start ssh server
-  win_service:
-    name: sshd
-    state: restarted
-    start_mode: auto
