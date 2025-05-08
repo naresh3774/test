@@ -4,11 +4,17 @@ param (
     [string]$NodeConfigurationName
 )
 
-Write-Host "Running on VM to register for DSC: $NodeConfigurationName"
+Import-Module Az.Accounts
+Import-Module Az.Automation
+Import-Module Az.Compute
+
+$vm = Get-AzVM -Name $env:COMPUTERNAME
+
+Write-Host "Registering VM '$($vm.Name)' with DSC Configuration '$NodeConfigurationName'"
 
 Register-AzAutomationDscNode `
-    -AzureVMName $env:COMPUTERNAME `
+    -AzureVMName $vm.Name `
     -NodeConfigurationName $NodeConfigurationName `
-    -AzureVMResourceGroup (Get-AzVM -Name $env:COMPUTERNAME).ResourceGroupName `
+    -AzureVMResourceGroup $vm.ResourceGroupName `
     -AutomationAccountName $AutomationAccountName `
     -ResourceGroupName $AutomationResourceGroup
