@@ -1,11 +1,10 @@
 resource "null_resource" "register_dsc_nodes" {
   provisioner "local-exec" {
-    command = "pwsh ./scripts/register_all_dsc.ps1 -vmNames ${join(",", var.dsc_config.vm_names)} -vmRG ${var.dsc_config.vm_resource_group} -aan ${var.dsc_config.automation_account} -aarg ${var.dsc_config.automation_resource_rg}"
+    command = "powershell ./scripts/register_all_dsc.ps1 -vmNames ${join(",", var.dsc_config.vm_names)} -vmRG ${var.dsc_config.vm_resource_group} -aan ${var.dsc_config.automation_account} -aarg ${var.dsc_config.automation_resource_rg}"
   }
 
-  # Remove broken depends_on for now. Optionally wait on a known resource
   triggers = {
-    always_run = "${timestamp()}"
+    always_run = timestamp()
   }
 }
 
