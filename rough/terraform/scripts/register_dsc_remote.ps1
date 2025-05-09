@@ -1,24 +1,30 @@
 param(
-    [string]$AutomationAccountName,
-    [string]$AutomationResourceGroup,
-    [string]$NodeConfigurationName,
-    [string]$VmName,
-    [string]$VmResourceGroup,
-    [string]$KeyVaultName
+  [string]$AutomationAccountName,
+  [string]$AutomationResourceGroup,
+  [string]$NodeConfigurationName,
+  [string]$VmName,
+  [string]$VmResourceGroup,
+  [string]$KeyVaultName
 )
 
-# Fetch credentials from Key Vault
-$AppId = az keyvault secret show --vault-name $KeyVaultName --name "sp-client-id" --query value -o tsv
-$Password = az keyvault secret show --vault-name $KeyVaultName --name "sp-client-secret" --query value -o tsv
-$Tenant = az keyvault secret show --vault-name $KeyVaultName --name "sp-tenant-id" --query value -o tsv
+# Import necessary modules
+Import-Module Az.Accounts
+Import-Module Az.Automation
+Import-Module Az.KeyVault
 
-# Login with SP
-az login --service-principal -u $AppId -p $Password --tenant $Tenant
+# Login using SP credentials from Key Vault
+$clientId = (az keyvault secret show --name "client-id" --vault-name $KeyVaultName --query "value" -o tsv)
+$clientSecret = (az keyvault secret show --name "client-secret" --vault-name $KeyVaultName --query "value" -o tsv)
+$tenantId = (az keyvault secret show --name "tenant-id" --vault-name $KeyVaultName --query "value" -o tsv)
 
-# Run DSC registration
+az login --service-principal -u $clientId -p $clientSecret --tenant $tenantId | Out-Null
+
+# Register VM with DSC
 Register-AzAutomationDscNode `
-    -AzureVMName $VmName `
-    -NodeConfigurationName $NodeConfigurationName `
-    -AzureVMResourceGroup $VmResourceGroup `
-    -AutomationAccountName $AutomationAccountName `
-    -ResourceGroupName $AutomationResourceGroup
+  -ResourceGroupName $VmResourceGroup `
+  -AutomationAccountName $AutomationAccountName `
+  -AzureVMName $VmName `
+  -NodeConfigurationName $NodeConfigurationName `
+  -ConfigurationMode "ApplyAndAutoCorrect" `
+  -RebootNodeIfNeeded $true `
+  -ActionAfterReboot "ContinueConfiguration"
