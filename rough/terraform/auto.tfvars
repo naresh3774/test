@@ -9,7 +9,8 @@ dsc_config = {
     "esri-12",
     "esri-13"
   ]
-  vm_resource_group      = "esri-nonprod-rg-shrd"
-  automation_account     = "auto-acc-nonprd-aa-automation"
-  automation_resource_rg = "auto-acc-nonprd-rg-automation"
+  vm_resource_group      = "vm-rg"
+  automation_account     = "auto-aa-automation"
+  automation_resource_rg = "rg-automation"
+  keyvault_name          = "vmsecrets"
 }

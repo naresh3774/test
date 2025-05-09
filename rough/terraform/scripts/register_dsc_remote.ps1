@@ -1,20 +1,24 @@
-param (
+param(
     [string]$AutomationAccountName,
     [string]$AutomationResourceGroup,
-    [string]$NodeConfigurationName
+    [string]$NodeConfigurationName,
+    [string]$VmName,
+    [string]$VmResourceGroup,
+    [string]$KeyVaultName
 )
 
-Import-Module Az.Accounts
-Import-Module Az.Automation
-Import-Module Az.Compute
+# Fetch credentials from Key Vault
+$AppId = az keyvault secret show --vault-name $KeyVaultName --name "sp-client-id" --query value -o tsv
+$Password = az keyvault secret show --vault-name $KeyVaultName --name "sp-client-secret" --query value -o tsv
+$Tenant = az keyvault secret show --vault-name $KeyVaultName --name "sp-tenant-id" --query value -o tsv
 
-$vm = Get-AzVM -Name $env:COMPUTERNAME
+# Login with SP
+az login --service-principal -u $AppId -p $Password --tenant $Tenant
 
-Write-Host "Registering VM '$($vm.Name)' with DSC Configuration '$NodeConfigurationName'"
-
+# Run DSC registration
 Register-AzAutomationDscNode `
-    -AzureVMName $vm.Name `
+    -AzureVMName $VmName `
     -NodeConfigurationName $NodeConfigurationName `
-    -AzureVMResourceGroup $vm.ResourceGroupName `
+    -AzureVMResourceGroup $VmResourceGroup `
     -AutomationAccountName $AutomationAccountName `
     -ResourceGroupName $AutomationResourceGroup
