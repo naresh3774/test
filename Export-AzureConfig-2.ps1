@@ -1,46 +1,54 @@
-# Set your resource group
+# Set resource group
 $resourceGroup = "your-resource-group-name"
 
-# Timestamped output file names
+# Timestamp for output folders/files
 $timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
-$jsonOutputFile = "full_config_$timestamp.json"
-$hclOutputFile = "terraform_skeleton_$timestamp.tf"
+$exportFolder = ".\cfg\$resourceGroup-$timestamp"
+$jsonFile     = "$exportFolder\$resourceGroup-template.json"
+$bicepFile    = "$exportFolder\$resourceGroup-template.bicep"
+$zipFile      = "$resourceGroup-export-$timestamp.zip"
+$hclFile      = "$exportFolder\$resourceGroup.tf"
 
-# Initialize files
-@() | ConvertTo-Json -Depth 10 | Out-File -FilePath $jsonOutputFile -Encoding utf8
-"" | Out-File -FilePath $hclOutputFile -Encoding utf8
+# Create folder
+New-Item -Path $exportFolder -ItemType Directory -Force | Out-Null
 
-# Get all resources in the resource group
-$resources = az resource list --resource-group $resourceGroup | ConvertFrom-Json
+# Export ARM template of the resource group
+Export-AzResourceGroup -ResourceGroupName $resourceGroup -IncludeComments -OutputFolder $exportFolder -Force
 
-foreach ($resource in $resources) {
-    $id = $resource.id
-    $type = $resource.type
-    $name = $resource.name
-    $location = $resource.location
-    $provider = ($type -split "/")[0]
-    $resourceType = ($type -split "/")[1]
+# Convert ARM JSON to Bicep
+az bicep decompile --file $jsonFile --out $bicepFile
 
-    # Get full config
-    $config = az resource show --ids $id | ConvertFrom-Json
-    $config | ConvertTo-Json -Depth 10 | Out-File -Append -FilePath $jsonOutputFile -Encoding utf8
+# Create basic HCL Terraform skeleton from ARM JSON
+$json = Get-Content -Path $jsonFile | ConvertFrom-Json
 
-    # Create Terraform resource type format
-    $tfResourceType = $type.Replace("Microsoft.", "azurerm_").Replace("/", "_").ToLower()
+$resources = $json.resources
+$hclContent = ""
 
-    # Basic Terraform HCL skeleton
-    $hcl = @"
-resource "$tfResourceType" "$name" {
+foreach ($res in $resources) {
+    $type = $res.type.Replace("Microsoft.", "azurerm_").Replace("/", "_").ToLower()
+    $name = $res.name
+    $location = $res.location
+
+    $hclContent += @"
+resource "$type" "$name" {
   name     = "$name"
   location = "$location"
   # resource_group_name = "$resourceGroup"
-  # other attributes to be filled
+  # other attributes...
 }
+
 "@
-
-    # Append to HCL file
-    $hcl | Out-File -Append -FilePath $hclOutputFile -Encoding utf8
 }
 
-Write-Host "`n✅ JSON config exported to: $jsonOutputFile"
-Write-Host "✅ Terraform HCL skeleton exported to: $hclOutputFile"
+# Save HCL skeleton
+$hclContent | Out-File -FilePath $hclFile -Encoding utf8
+
+# Zip the export folder
+Compress-Archive -Path "$exportFolder\*" -DestinationPath $zipFile -Force
+
+# Output result
+Write-Host "`n✅ Export complete:"
+Write-Host "   ARM JSON:       $jsonFile"
+Write-Host "   Bicep file:     $bicepFile"
+Write-Host "   HCL skeleton:   $hclFile"
+Write-Host "   ZIP archive:    $zipFile"
