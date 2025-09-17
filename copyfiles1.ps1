@@ -46,7 +46,7 @@ $vmName = $env:COMPUTERNAME.ToLower()
 Write-Output "VM Name: $vmName"
 
 # Download mapping.json
-$mappingUrl   = "https://esrinonprodstshrd.z2.web.core.usgovcloudapi.net/arcgis-server/mapping.json"
+$mappingUrl   = "https://test.example.net/server/mapping.json" # Update with actual URL
 $mappingLocal = Join-Path $deployFolder "mapping.json"
 
 Write-Output "Downloading mapping.json from $mappingUrl"
@@ -81,4 +81,20 @@ if ($mapping.$vmName) {
 }
 else {
     Write-Output "No files assigned to $vmName in mapping.json."
+}
+
+
+
+resource "azurerm_virtual_machine_run_command" "prereq_30001" {
+  name               = "Run-Prereq-30001"
+  virtual_machine_id = data.azurerm_windows_virtual_machine.arcgis3001.id
+  location           = data.azurerm_windows_virtual_machine.arcgis3001.location
+
+  source {
+    script = "Write-Output \"Starting prereq.ps1...\"\n& \"C:\\Deploy\\prereq.ps1\"\nWrite-Output \"Finished prereq.ps1.\""
+  }
+
+  depends_on = [
+    null_resource.copy_files_to_vms
+  ]
 }
