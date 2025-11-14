@@ -37,11 +37,50 @@ if ($vnetDns) {
 }
 
 Write-Host "`n🔥 Step 3: Checking firewall status..." -ForegroundColor Yellow
-$firewallState = az network firewall show --name $firewallName --resource-group $firewallRG --query "provisioningState" -o tsv
-$firewallIP = az network firewall show --name $firewallName --resource-group $firewallRG --query "ipConfigurations[0].privateIPAddress" -o tsv
 
-Write-Host "📋 Firewall status: $firewallState" -ForegroundColor Cyan
-Write-Host "📋 Firewall private IP: $firewallIP" -ForegroundColor Cyan
+# First fix Azure CLI extension warning
+az config set extension.dynamic_install_allow_preview=true 2>$null
+
+# Check if firewall exists
+try {
+    $firewallExists = az network firewall show --name $firewallName --resource-group $firewallRG --query "name" -o tsv 2>$null
+    
+    if ($firewallExists) {
+        Write-Host "✅ Firewall exists: $firewallExists" -ForegroundColor Green
+        
+        # Get firewall details
+        $firewallState = az network firewall show --name $firewallName --resource-group $firewallRG --query "provisioningState" -o tsv 2>$null
+        $firewallIP = az network firewall show --name $firewallName --resource-group $firewallRG --query "ipConfigurations[0].properties.privateIPAddress" -o tsv 2>$null
+        
+        Write-Host "📋 Firewall status: $firewallState" -ForegroundColor Cyan
+        Write-Host "📋 Firewall private IP: $firewallIP" -ForegroundColor Cyan
+        
+        if (-not $firewallIP) {
+            Write-Host "⚠️ Could not retrieve firewall private IP - checking public IP instead..." -ForegroundColor Yellow
+            $publicIP = az network firewall show --name $firewallName --resource-group $firewallRG --query "ipConfigurations[0].properties.publicIPAddress.id" -o tsv 2>$null
+            if ($publicIP) {
+                $publicIPName = ($publicIP -split '/')[-1]
+                $publicIPAddress = az network public-ip show --name $publicIPName --resource-group $firewallRG --query "ipAddress" -o tsv 2>$null
+                Write-Host "📋 Firewall public IP: $publicIPAddress" -ForegroundColor Cyan
+            }
+        }
+        
+        # Check firewall rules quickly
+        Write-Host "📋 Checking firewall rule collections..."
+        $appRules = az network firewall application-rule list --firewall-name $firewallName --resource-group $firewallRG --query "length(@)" -o tsv 2>$null
+        $netRules = az network firewall network-rule list --firewall-name $firewallName --resource-group $firewallRG --query "length(@)" -o tsv 2>$null
+        
+        Write-Host "   Application rule collections: $appRules" -ForegroundColor Cyan
+        Write-Host "   Network rule collections: $netRules" -ForegroundColor Cyan
+        
+    } else {
+        Write-Host "❌ CRITICAL: Firewall '$firewallName' not found in resource group '$firewallRG'!" -ForegroundColor Red
+        Write-Host "🔧 Verify firewall name and resource group are correct" -ForegroundColor Yellow
+    }
+} catch {
+    Write-Host "❌ Error checking firewall: $($_.Exception.Message)" -ForegroundColor Red
+    Write-Host "🔧 Check Azure CLI login and permissions" -ForegroundColor Yellow
+}
 
 Write-Host "`n🌐 Step 4: Checking NSG rules on AKS subnet..." -ForegroundColor Yellow
 $nsgId = az network vnet subnet show --vnet-name $vnetName --name $aksSubnetName --resource-group $vnetRG --query "networkSecurityGroup.id" -o tsv
