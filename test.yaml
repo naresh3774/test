@@ -1,0 +1,19 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: aks-helloworld
+  namespace: test-app
+  labels:
+    app: aks-helloworld
+  annotations:
+    # Force Azure Load Balancer to probe "/" on port 80
+    service.beta.kubernetes.io/azure-load-balancer-health-probe-request-path: /
+spec:
+  type: LoadBalancer
+  ports:
+  - port: 80
+    targetPort: 80
+    protocol: TCP
+    name: http
+  selector:
+    app: aks-helloworld
