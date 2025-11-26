@@ -1,20 +1,60 @@
+# Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: aks-helloworld
+  namespace: test-app
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: aks-helloworld
+  template:
+    metadata:
+      labels:
+        app: aks-helloworld
+    spec:
+      containers:
+      - name: aks-helloworld
+        image: mcr.microsoft.com/azuredocs/aks-helloworld:v1
+        ports:
+        - name: http
+          containerPort: 80
+        env:
+        - name: TITLE
+          value: "Welcome to Azure Kubernetes Service (AKS)"
+---
+# Service
 apiVersion: v1
 kind: Service
 metadata:
   name: aks-helloworld
   namespace: test-app
-  labels:
-    app: aks-helloworld
-  annotations:
-    # Force Azure Load Balancer to probe "/" on port 80
-    service.beta.kubernetes.io/azure-load-balancer-health-probe-request-path: /
-    service.beta.kubernetes.io/azure-load-balancer-health-probe-port: "80"
 spec:
-  type: LoadBalancer
+  type: ClusterIP # keep ClusterIP if you only want ingress exposure
   ports:
-  - port: 80
-    targetPort: 80
-    protocol: TCP
-    name: http
+  - name: http
+    port: 80
+    targetPort: http
   selector:
     app: aks-helloworld
+---
+# Ingress
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: aks-helloworld
+  namespace: test-app
+spec:
+  ingressClassName: webapprouting.kubernetes.azure.com
+  rules:
+  - host: research.fs.usda.gov
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: aks-helloworld
+            port:
+              name: http
