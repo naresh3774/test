@@ -8,6 +8,7 @@ metadata:
   annotations:
     # Force Azure Load Balancer to probe "/" on port 80
     service.beta.kubernetes.io/azure-load-balancer-health-probe-request-path: /
+    service.beta.kubernetes.io/azure-load-balancer-health-probe-port: "80"
 spec:
   type: LoadBalancer
   ports:
