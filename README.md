@@ -1,13 +1,35 @@
-kubectl get namespace cnvrg -o json > tmp.json
+1. main.bicepparam (Configuration File)
+Line 66-67 - Added new parameter:
 
-then edit tmp.json and remove"kubernetes"
-}, “spec”: { “finalizers”: [ “kubernetes” ] },
+// Set to true for a fully private cluster, false for IP-restricted public cluster
+```
+param enablePrivateCluster = false
+```
 
-after editing it should look like this
+--------
 
-}, “spec”: { “finalizers”: [ ] },
+2. main.bicep (Main Template)
+Line 77 - Added parameter declaration:
+```
+param enablePrivateCluster bool
+```
 
-Open another terminal and Run kubectl proxy and hit the Curl
+Line 96 - Passed parameter to AKS module:
+```
+enablePrivateCluster: enablePrivateCluster
+```
 
-
-curl -k -H "Content-Type: application/json" -X PUT --data-binary @tmp.json http://127.0.0.1:8001/api/v1/namespaces/cnvrg/finalize
+3. aks.bicep (AKS Module)
+Line 5 - Added parameter:
+```
+param enablePrivateCluster bool
+```
+Lines 130-135 - Conditional apiServerAccessProfile:
+```
+apiServerAccessProfile: enablePrivateCluster ? {
+  enablePrivateCluster: true
+  enablePrivateClusterPublicFQDN: false
+} : {
+  authorizedIPRanges: authorizedIPRanges
+}
+```
