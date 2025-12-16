@@ -7,6 +7,11 @@
     IsPrimary   = $true       # Only one node
 
     # =============================
+    # INSTALLATION PATH
+    # =============================
+    InstallPath = "C:\ArcGIS\NotebookServer"  # Custom installation path
+
+    # =============================
     # AZURE STORAGE (Installer + License + Certificate)
     # =============================
     StorageAccountUrl = "https://esari-nonprd.blob.core.windows.net"

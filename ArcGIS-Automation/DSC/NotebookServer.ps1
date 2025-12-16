@@ -1,6 +1,6 @@
-# =============================
+# ==============================
 # DSC Notebook Server Script
-# =============================
+# ==============================
 
 $Config = Import-PowerShellDataFile -Path "C:\ArcGIS-Automation\Config\config.psd1"
 
@@ -12,7 +12,6 @@ if (-not (Get-CimInstance Win32_OperatingSystem | Where-Object {$_.Caption -like
     exit
 }
 
-# Login using VM's system-assigned managed identity
 az login --identity
 
 # Verify Key Vault secrets
@@ -61,6 +60,13 @@ $CertPassword = az keyvault secret show --vault-name $Config.KeyVaultName --name
 $SecureCertPassword = ConvertTo-SecureString $CertPassword -AsPlainText -Force
 
 # -----------------------------
+# Create install folder if not exists
+# -----------------------------
+if (-not (Test-Path $Config.InstallPath)) {
+    New-Item -ItemType Directory -Force -Path $Config.InstallPath | Out-Null
+}
+
+# -----------------------------
 # Import certificate
 # -----------------------------
 Import-PfxCertificate -FilePath "$TempDir\$($Config.NotebookCertBlob)" -CertStoreLocation Cert:\LocalMachine\My -Password $SecureCertPassword
@@ -69,20 +75,20 @@ Remove-Item "$TempDir\$($Config.NotebookCertBlob)" -Force
 # -----------------------------
 # Install Notebook Server silently
 # -----------------------------
-Start-Process -FilePath "$TempDir\$($Config.NotebookInstallerBlob)" -ArgumentList "/qb /norestart /log C:\Temp\NotebookInstall.log" -Wait
+Start-Process -FilePath "$TempDir\$($Config.NotebookInstallerBlob)" -ArgumentList "/qb /norestart /log $TempDir\NotebookInstall.log /INSTALLDIR=$($Config.InstallPath)" -Wait
 Remove-Item "$TempDir\$($Config.NotebookInstallerBlob)" -Force
 
 # -----------------------------
 # Apply license
 # -----------------------------
-& "C:\Program Files\ArcGIS\NotebookServer\tools\authorizeSoftware.bat" /f "$TempDir\$($Config.NotebookLicenseBlob)"
+& "$($Config.InstallPath)\tools\authorizeSoftware.bat" /f "$TempDir\$($Config.NotebookLicenseBlob)"
 Remove-Item "$TempDir\$($Config.NotebookLicenseBlob)" -Force
 
 # -----------------------------
 # Create primary site
 # -----------------------------
 if ($Config.IsPrimary) {
-    & "C:\Program Files\ArcGIS\NotebookServer\tools\notebookservertools.exe" CreateSite -PortalUrl $Config.PortalUrl -AdminUsername $PortalAdmin -AdminPassword $PortalPassword -HttpsPort 11443 -SiteName "NotebookSite"
+    & "$($Config.InstallPath)\tools\notebookservertools.exe" CreateSite -PortalUrl $Config.PortalUrl -AdminUsername $PortalAdmin -AdminPassword $PortalPassword -HttpsPort 11443 -SiteName "NotebookSite"
 }
 
 Write-Host "Notebook Server setup completed successfully."
