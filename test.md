@@ -15,9 +15,9 @@ All refs
 🧼 Step 2 — Rewrite history using built-in Git only
 🔧 Run this command (copy-paste exactly)
 ```
-$env:FILTER_BRANCH_SQUELCH_WARNING = "1"
+set FILTER_BRANCH_SQUELCH_WARNING=1
 
-git filter-branch --force --tree-filter ^
+git filter-branch -f --tree-filter ^
 "for /r %%f in (primary.auto.tfvars) do (
   powershell -NoProfile -Command ^
   ""(Get-Content '%%f') ^
@@ -26,7 +26,7 @@ git filter-branch --force --tree-filter ^
     -replace '^tenant_id\s*=.*','tenant_id = ""' ^
     -replace '^subscription_id\s*=.*','subscription_id = ""' ^
   | Set-Content '%%f'""
-" -- --all
+)" -- --all
 ```
 ✅ What this does
 
