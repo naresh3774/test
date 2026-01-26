@@ -17,18 +17,16 @@ All refs
 ```
 $env:FILTER_BRANCH_SQUELCH_WARNING = "1"
 
-git filter-branch --force --tree-filter `
-'pwsh -NoProfile -Command "
-Get-ChildItem -Recurse -Filter primary.auto.tfvars | ForEach-Object {
-  (Get-Content $_.FullName) `
-    -replace ''^client_id\s*=.*'', ''client_id = \"\"'' `
-    -replace ''^client_secret\s*=.*'', ''client_secret = \"\"'' `
-    -replace ''^tenant_id\s*=.*'', ''tenant_id = \"\"'' `
-    -replace ''^subscription_id\s*=.*'', ''subscription_id = \"\"'' |
-  Set-Content $_.FullName
-}
-"' `
--- --all
+git filter-branch --force --tree-filter ^
+"for /r %%f in (primary.auto.tfvars) do (
+  powershell -NoProfile -Command ^
+  ""(Get-Content '%%f') ^
+    -replace '^client_id\s*=.*','client_id = ""' ^
+    -replace '^client_secret\s*=.*','client_secret = ""' ^
+    -replace '^tenant_id\s*=.*','tenant_id = ""' ^
+    -replace '^subscription_id\s*=.*','subscription_id = ""' ^
+  | Set-Content '%%f'""
+" -- --all
 ```
 ✅ What this does
 
