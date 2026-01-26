@@ -16,14 +16,14 @@ All refs
 🔧 Run this command (copy-paste exactly)
 ```
 git filter-branch --force --tree-filter '
-  find . -name "primary.auto.tfvars" -type f -print0 | while IFS= read -r -d "" file; do
-    sed -i \
-      -e "s/^client_id\s*=.*/client_id = \"\"/" \
-      -e "s/^client_secret\s*=.*/client_secret = \"\"/" \
-      -e "s/^tenant_id\s*=.*/tenant_id = \"\"/" \
-      -e "s/^subscription_id\s*=.*/subscription_id = \"\"/" \
-      "$file"
-  done
+for file in $(find . -type f -name "primary.auto.tfvars"); do
+  sed -i \
+    -e "s/^client_id\s*=.*/client_id = \"\"/" \
+    -e "s/^client_secret\s*=.*/client_secret = \"\"/" \
+    -e "s/^tenant_id\s*=.*/tenant_id = \"\"/" \
+    -e "s/^subscription_id\s*=.*/subscription_id = \"\"/" \
+    "$file"
+done
 ' -- --all
 ```
 ✅ What this does
