@@ -97,3 +97,8 @@ Safe for compliance & audits
 No external tools used
 
 Works in locked-down corporate laptops
+
+
+```
+pwsh -NoProfile -File sanitize.ps1
+```
