@@ -102,3 +102,7 @@ Works in locked-down corporate laptops
 ```
 pwsh -NoProfile -File sanitize.ps1
 ```
+```
+set FILTER_BRANCH_SQUELCH_WARNING=1
+git filter-branch -f --tree-filter "pwsh -NoProfile -File sanitize.ps1" -- --all
+```
