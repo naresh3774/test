@@ -15,18 +15,19 @@ All refs
 🧼 Step 2 — Rewrite history using built-in Git only
 🔧 Run this command (copy-paste exactly)
 ```
-FILTER_BRANCH_SQUELCH_WARNING=1 \
-git filter-branch --force --tree-filter \
-'bash -c "
-find . -type f -name primary.auto.tfvars | while read file; do
-  sed -i \
-    -e '\''s/^client_id[[:space:]]*=.*/client_id = \"\"/'\'' \
-    -e '\''s/^client_secret[[:space:]]*=.*/client_secret = \"\"/'\'' \
-    -e '\''s/^tenant_id[[:space:]]*=.*/tenant_id = \"\"/'\'' \
-    -e '\''s/^subscription_id[[:space:]]*=.*/subscription_id = \"\"/'\'' \
-    \"\$file\"
-done
-"' \
+$env:FILTER_BRANCH_SQUELCH_WARNING = "1"
+
+git filter-branch --force --tree-filter `
+'pwsh -NoProfile -Command "
+Get-ChildItem -Recurse -Filter primary.auto.tfvars | ForEach-Object {
+  (Get-Content $_.FullName) `
+    -replace ''^client_id\s*=.*'', ''client_id = \"\"'' `
+    -replace ''^client_secret\s*=.*'', ''client_secret = \"\"'' `
+    -replace ''^tenant_id\s*=.*'', ''tenant_id = \"\"'' `
+    -replace ''^subscription_id\s*=.*'', ''subscription_id = \"\"'' |
+  Set-Content $_.FullName
+}
+"' `
 -- --all
 ```
 ✅ What this does
