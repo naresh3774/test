@@ -12,3 +12,9 @@ git branch | Where-Object { $_ -notmatch "fresh-start" } | ForEach-Object {
     git branch -D $_.Trim()
 }
 ```
+
+```
+git for-each-ref --format="%(refname:short)" refs/heads/ |
+Where-Object { $_ -ne "CLEAN_START" } |
+ForEach-Object { git branch -D $_ }
+```
