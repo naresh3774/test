@@ -12,6 +12,13 @@ You will start here:
 cd C:\Users\NareshSharma\workspace\terraform_cleanup
 ```
 ```
+git rev-parse --is-inside-work-tree
+```
+```
+rm -Recurse -Force Azure_Terraform_NonProduction
+```
+
+```
 pwsh -NoProfile -ExecutionPolicy Bypass -File .\full-sanitize-reset.ps1
 ```
 

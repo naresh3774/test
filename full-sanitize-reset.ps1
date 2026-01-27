@@ -18,15 +18,10 @@ $VarsToClean = @(
 )
 # -------------------------------------------------
 
-# -------- SAFETY CHECKS --------
-try {
-    git rev-parse --is-inside-work-tree 2>$null | Out-Null
-    Write-Error "❌ You are inside a git repo. Run this script OUTSIDE the repo."
-    exit 1
-} catch {}
-
-if (Test-Path $WorkDir) {
-    Write-Error "❌ '$WorkDir' already exists. Delete it first."
+# -------- SAFETY CHECK: MUST BE OUTSIDE A GIT REPO --------
+git rev-parse --is-inside-work-tree 2>$null | Out-Null
+if ($LASTEXITCODE -eq 0) {
+    Write-Error "❌ You are inside a git repository. Run this script OUTSIDE the repo."
     exit 1
 }
 
