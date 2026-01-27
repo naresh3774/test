@@ -18,3 +18,8 @@ git for-each-ref --format="%(refname:short)" refs/heads/ |
 Where-Object { $_ -ne "CLEAN_START" } |
 ForEach-Object { git branch -D $_ }
 ```
+
+
+```
+git branch | Where-Object { $_ -ne "CLEAN_START" } | ForEach-Object { git branch -D $_ }
+```
