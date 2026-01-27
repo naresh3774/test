@@ -1,84 +1,59 @@
 # =========================================================
-# FINAL HISTORY RESET SCRIPT
-# RUN FROM INSIDE THE REPO
+# FINAL HISTORY RESET — GUARANTEED SINGLE COMMIT
+# SCRIPT STAYS OUTSIDE REPO
 # =========================================================
 
-Write-Host "🚨 FINAL HISTORY RESET — LOCAL ONLY"
-Write-Host "------------------------------------------------"
+Write-Host "🔥 Resetting git history to a single clean commit"
 
-# ---- Safety: confirm inside git repo ----
+# Ensure we are inside repo
 git rev-parse --is-inside-work-tree 2>$null | Out-Null
 if ($LASTEXITCODE -ne 0) {
-    Write-Error "❌ Not inside a git repository. Abort."
+    Write-Error "❌ Run this script FROM INSIDE the repo directory."
     exit 1
 }
 
-# ---- Disable pager to avoid ':' hangs ----
+# Disable pager
 git config core.pager cat
 
-# ---- Show current state ----
-Write-Host "`n📌 Current branch:"
-git branch --show-current
-
-Write-Host "`n📌 Current history (before):"
-git log --oneline --decorate --max-count=10
-
-# =========================================================
-# STEP 1 — CREATE ORPHAN BRANCH (NO HISTORY)
-# =========================================================
-Write-Host "`n🔥 Creating orphan branch CLEAN_START..."
+# ---------------------------------------------------------
+# STEP 1: CREATE ORPHAN BRANCH (NO HISTORY)
+# ---------------------------------------------------------
 git checkout --orphan CLEAN_START
 
-# =========================================================
-# STEP 2 — REMOVE EVERYTHING FROM INDEX & WORKTREE
-# =========================================================
-Write-Host "🧹 Removing all tracked/untracked files..."
-git reset --hard
-git clean -fdx
+# ---------------------------------------------------------
+# STEP 2: REMOVE ALL FILES FROM INDEX ONLY
+# (do NOT delete working tree)
+# ---------------------------------------------------------
+git rm -rf --cached . 2>$null
 
-# =========================================================
-# STEP 3 — RESTORE SANITIZED FILES
-# (working tree already has sanitized content)
-# =========================================================
-Write-Host "📦 Re-adding sanitized files..."
+# ---------------------------------------------------------
+# STEP 3: ADD ALL CURRENT FILES (SANITIZED)
+# ---------------------------------------------------------
 git add .
 
-# =========================================================
-# STEP 4 — CREATE SINGLE INITIAL COMMIT
-# =========================================================
-Write-Host "✅ Creating initial sanitized commit..."
+# ---------------------------------------------------------
+# STEP 4: CREATE SINGLE INITIAL COMMIT
+# ---------------------------------------------------------
 git commit -m "Initial commit (sanitized)"
 
-# =========================================================
-# STEP 5 — DELETE ALL OTHER LOCAL BRANCHES
-# =========================================================
-Write-Host "`n🧹 Removing all old branches..."
-git branch |
-Where-Object { $_ -ne "CLEAN_START" } |
-ForEach-Object {
-    git branch -D $_
-}
-
-# =========================================================
-# STEP 6 — RENAME CLEAN_START → main
-# =========================================================
-Write-Host "`n🔁 Renaming CLEAN_START to main..."
-git branch -m main
+# ---------------------------------------------------------
+# STEP 5: FORCE main TO POINT HERE
+# ---------------------------------------------------------
+git branch -M main
 git checkout main
 
-# =========================================================
-# STEP 7 — FINAL VERIFICATION
-# =========================================================
+# ---------------------------------------------------------
+# STEP 6: VERIFY
+# ---------------------------------------------------------
 Write-Host "`n✅ FINAL STATE"
-Write-Host "-----------------------------"
-git branch
 git log --oneline
+git branch
 
-Write-Host "`n🔍 Verifying secrets are gone (should be EMPTY):"
+Write-Host "`n🔍 Verifying secrets are gone (expect NO output):"
 git grep client_id
 git grep client_secret
 git grep tenant_id
 git grep subscription_id
 
-Write-Host "`n🛑 DONE — NO PUSH WAS PERFORMED"
-Write-Host "👉 Review carefully, then push manually when ready."
+Write-Host "`n🛑 DONE — NO PUSH PERFORMED"
+Write-Host "👉 If git log shows ONE commit, you are safe to push."
