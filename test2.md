@@ -1,30 +1,22 @@
 ```
-pwsh -NoProfile -File sanitize-all-history.ps1
+pwsh -NoProfile -ExecutionPolicy Bypass -File .\full-sanitize-reset.ps1
 ```
+
+```
+git log --oneline
+# ONE commit only
+
+git branch
+# main
+
+git grep client_secret
+# no output
+```
+
 
 Push with:
 ```
-git push --force --all
+git push --force origin main
+git push --force --prune origin "+refs/heads/*"
 git push --force --tags
-```
-```
-git branch | Where-Object { $_ -notmatch "fresh-start" } | ForEach-Object {
-    git branch -D $_.Trim()
-}
-```
-
-```
-git for-each-ref --format="%(refname:short)" refs/heads/ |
-Where-Object { $_ -ne "CLEAN_START" } |
-ForEach-Object { git branch -D $_ }
-```
-
-
-```
-git branch | Where-Object { $_ -ne "CLEAN_START" } | ForEach-Object { git branch -D $_ }
-```
-
-
-```
-git branch | Where-Object { $_ -ne "CLEAN_START" } | ForEach-Object { git branch -D $_ }
 ```
