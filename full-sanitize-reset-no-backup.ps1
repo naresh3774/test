@@ -7,7 +7,7 @@
 # -----------------------------
 # CONFIGURATION
 # -----------------------------
-$RepoUrl = "https://github.com/your-org/Azure_Terraform_NonProduction.git"
+$RepoUrl = "https://github.com/your-org/Azure_Terraform_NonProduction.git"  # Change this to your repo
 $RepoFolder = "Azure_Terraform_NonProduction"
 $FinalBranch = "main"
 
@@ -16,12 +16,12 @@ $FinalBranch = "main"
 # -----------------------------
 $FullRepoPath = Join-Path $PSScriptRoot $RepoFolder
 if (Test-Path $FullRepoPath) {
-    Write-Error "❌ Folder '$RepoFolder' already exists. Please delete it before running this script."
-    exit 1
+    Write-Host "❌ Folder '$RepoFolder' already exists. Deleting it for a fresh start..."
+    Remove-Item -Recurse -Force $FullRepoPath
 }
 
 # -----------------------------
-# STEP 1: Clone fresh working repo
+# STEP 1: Clone fresh repo with working tree
 # -----------------------------
 Write-Host "📥 Cloning repo..."
 git clone $RepoUrl $RepoFolder
@@ -37,15 +37,16 @@ Write-Host "🔄 Fetching all remote branches..."
 git fetch --all
 
 # -----------------------------
-# STEP 3: Create local branches from remote safely
+# STEP 3: Create local branches safely
 # -----------------------------
-Write-Host "🌿 Creating local branches..."
+Write-Host "🌿 Creating local branches from remotes..."
 $remoteBranches = git branch -r | Where-Object { $_ -notmatch 'HEAD' }
 foreach ($r in $remoteBranches) {
     $rName = $r.Trim()
-    $localName = ($rName -replace '^origin/', '')  # keep slashes if needed
+    $localName = ($rName -replace '^origin/', '') # keep slashes if needed
     if (-not (git show-ref --verify --quiet "refs/heads/$localName")) {
         git branch $localName $rName
+        Write-Host "   Created local branch $localName from $rName"
     }
 }
 
@@ -91,7 +92,7 @@ git rm -rf --cached . 2>$null
 git clean -fdx
 
 # -----------------------------
-# STEP 6: Restore sanitized files from one of the branches
+# STEP 6: Restore sanitized files from first branch
 # -----------------------------
 Write-Host "📂 Restoring sanitized files from branch $($branches[0])..."
 git checkout $branches[0] -- .
@@ -108,10 +109,16 @@ git commit -m "Initial commit (sanitized)"
 git branch -M $FinalBranch
 
 # -----------------------------
-# STEP 9: Delete all old local branches
+# STEP 9: Delete all old local branches safely
 # -----------------------------
 Write-Host "🗑 Deleting old local branches..."
-git branch | Where-Object { $_ -ne $FinalBranch } | ForEach-Object { git branch -D $_ }
+git branch | ForEach-Object {
+    $b = $_.Trim() -replace '^\* ',''
+    if ($b -ne $FinalBranch) {
+        Write-Host "   Deleting $b"
+        git branch -D $b
+    }
+}
 
 # -----------------------------
 # STEP 10: Verification
