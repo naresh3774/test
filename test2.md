@@ -7,3 +7,8 @@ Push with:
 git push --force --all
 git push --force --tags
 ```
+```
+git branch | Where-Object { $_ -notmatch "fresh-start" } | ForEach-Object {
+    git branch -D $_.Trim()
+}
+```
