@@ -1,6 +1,9 @@
 $ErrorActionPreference = "Continue"
 
-# Get ALL remote branches except HEAD
+# Fetch all branches first
+git fetch --all --prune | Out-Null
+
+# Get all remote branches except HEAD
 $branches = git for-each-ref --format="%(refname:short)" refs/remotes/origin/ |
     Where-Object { $_ -notmatch "HEAD" } |
     ForEach-Object { $_ -replace "^origin/", "" }
@@ -8,17 +11,18 @@ $branches = git for-each-ref --format="%(refname:short)" refs/remotes/origin/ |
 foreach ($branch in $branches) {
     Write-Host "`n=== Processing branch: $branch ==="
 
-    # Create local branch if missing
+    # Checkout branch (create local tracking branch if needed)
     if (-not (git branch --list $branch)) {
         git checkout -b $branch origin/$branch | Out-Null
     } else {
         git checkout $branch | Out-Null
     }
 
+    # Find primary.auto.tfvars anywhere in this branch
     $files = Get-ChildItem -Recurse -Filter primary.auto.tfvars -ErrorAction SilentlyContinue
 
-    if ($files.Count -eq 0) {
-        Write-Host "No primary.auto.tfvars found"
+    if (-not $files) {
+        Write-Host "No primary.auto.tfvars in this branch (skipping)"
         continue
     }
 
@@ -38,4 +42,4 @@ foreach ($branch in $branches) {
     git commit -m "Sanitize primary.auto.tfvars" -q
 }
 
-Write-Host "`n✅ Sanitization completed for all branches"
+Write-Host "`n✅ Finished processing all branches"
