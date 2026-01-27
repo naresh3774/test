@@ -42,6 +42,10 @@ git grep subscription_id
 ```
 
 
+
+```
+git rev-parse --is-inside-work-tree
+```
 Push with:
 ```
 git push --force origin main
