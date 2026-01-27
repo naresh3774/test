@@ -1,3 +1,16 @@
+
+```
+C:\Users\NareshSharma\workspace\terraform_cleanup\
+│
+├─ full-sanitize-reset.ps1   ← script lives here (GOOD)
+│
+└─ Azure_Terraform_NonProduction\   ← will be created by script
+```
+
+You will start here:
+```
+cd C:\Users\NareshSharma\workspace\terraform_cleanup
+```
 ```
 pwsh -NoProfile -ExecutionPolicy Bypass -File .\full-sanitize-reset.ps1
 ```
@@ -11,6 +24,14 @@ git branch
 
 git grep client_secret
 # no output
+```
+
+```
+git grep client_id
+git grep client_secret
+git grep tenant_id
+git grep subscription_id
+# ALL SHOULD RETURN NOTHING
 ```
 
 

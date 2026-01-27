@@ -3,6 +3,8 @@
 # MUST BE RUN FROM OUTSIDE ANY GIT REPO
 # =====================================================
 
+Set-Location -Path $PSScriptRoot
+
 # -------- CONFIG (EDIT ONLY THIS SECTION) --------
 $RepoUrl  = "<PUT_YOUR_REPO_URL_HERE>"
 $WorkDir  = "Azure_Terraform_NonProduction"
