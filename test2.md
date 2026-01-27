@@ -23,3 +23,8 @@ ForEach-Object { git branch -D $_ }
 ```
 git branch | Where-Object { $_ -ne "CLEAN_START" } | ForEach-Object { git branch -D $_ }
 ```
+
+
+```
+git branch | Where-Object { $_ -ne "CLEAN_START" } | ForEach-Object { git branch -D $_ }
+```
