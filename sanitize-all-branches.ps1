@@ -1,8 +1,14 @@
 # ================= CONFIG =================
-$RepoUrl = "https://github.com/YOUR_ORG/YOUR_REPO.git"
-$RepoDir = "repo"
-$TargetFile = "primary.auto.tfvars"
 
+$RepoUrl   = "PASTE_YOUR_GIT_REPO_URL_HERE"
+$RepoName  = "Azure_Terraform_NonProduction"
+$BasePath  = Get-Location
+$RepoPath  = Join-Path $BasePath $RepoName
+
+$SanitizeLog = Join-Path $BasePath "sanitize_changes.log"
+$HistoryLog  = Join-Path $BasePath "history_reset.log"
+
+# Sensitive keys to REMOVE
 $SensitivePatterns = @(
     '^\s*client_id\s*=.*$',
     '^\s*client_secret\s*=.*$',
@@ -10,103 +16,106 @@ $SensitivePatterns = @(
     '^\s*subscription_id\s*=.*$'
 )
 
-$SanitizeLog = "..\sanitize.log"
-$SummaryLog  = "..\summary.log"
-$PushLog     = "..\push.log"
+# =========================================
 
-# ================= INIT =================
-git clone $RepoUrl $RepoDir
-cd $RepoDir
+Write-Host "`n=== Terraform Full Branch Sanitize + History Reset ===`n"
 
-git fetch --all
-$Branches = git branch -r | Where-Object { $_ -notmatch "HEAD" } | ForEach-Object {
-    $_.Trim().Replace("origin/","")
+# Safety check
+if (Test-Path "$RepoPath\.git") {
+    Write-Error "❌ Repo already exists. DELETE it first for a clean run."
+    exit 1
 }
 
-"Starting sanitization: $(Get-Date)" | Out-File $SanitizeLog
-"Branch Summary:" | Out-File $SummaryLog
-"" | Out-File $PushLog
+# Init logs
+"" | Set-Content $SanitizeLog
+"" | Set-Content $HistoryLog
 
-# ================= PROCESS BRANCHES =================
-foreach ($Branch in $Branches) {
+# Clone repo
+git clone $RepoUrl
+Set-Location $RepoPath
 
-    "Processing branch: $Branch" | Tee-Object -FilePath $SummaryLog -Append
+# Fetch all branches
+git fetch --all --prune
 
-    git checkout -B $Branch origin/$Branch | Out-Null
+# Get all remote branches except HEAD
+$RemoteBranches = git branch -r |
+    Where-Object { $_ -notmatch 'HEAD' } |
+    ForEach-Object { $_.Trim() }
 
-    # --- CREATE ORPHAN ---
-    $TempBranch = "sanitize-temp-$Branch"
+foreach ($Remote in $RemoteBranches) {
+
+    $Branch = $Remote -replace '^origin/', ''
+    Write-Host "`n--- Processing branch: $Branch ---"
+
+    # Checkout branch locally
+    git checkout -B $Branch $Remote | Out-Null
+
+    # Create orphan temp branch
+    $TempBranch = "${Branch}_SANITIZE_TEMP"
     git checkout --orphan $TempBranch | Out-Null
 
-    git rm -rf . | Out-Null
+    # Remove index but keep files
+    git rm -rf --cached . | Out-Null
 
-    # --- COPY FILES FROM ORIGINAL BRANCH ---
-    git checkout $Branch -- . | Out-Null
+    # ================= SANITIZATION =================
 
-    # --- SANITIZE INSIDE ORPHAN ---
-    if (Test-Path $TargetFile) {
-        $Content = Get-Content $TargetFile
-        $OriginalCount = $Content.Count
+    $TfvarsFiles = Get-ChildItem -Recurse -Filter "primary.auto.tfvars" -File
 
-        foreach ($Pattern in $SensitivePatterns) {
-            $Content = $Content | Where-Object { $_ -notmatch $Pattern }
+    foreach ($file in $TfvarsFiles) {
+
+        $Original = Get-Content $file.FullName
+        $Sanitized = $Original
+
+        foreach ($pattern in $SensitivePatterns) {
+            $Sanitized = $Sanitized | Where-Object { $_ -notmatch $pattern }
         }
 
-        $Content | Set-Content $TargetFile
-        $NewCount = $Content.Count
-
-        "[$Branch] Sanitized $TargetFile (lines: $OriginalCount → $NewCount)" |
-            Tee-Object -FilePath $SanitizeLog -Append
-    }
-    else {
-        "[$Branch] $TargetFile not found" |
-            Tee-Object -FilePath $SanitizeLog -Append
+        if ($Original.Count -ne $Sanitized.Count) {
+            Set-Content -Path $file.FullName -Value $Sanitized
+            Add-Content $SanitizeLog "[$Branch] Sanitized: $($file.FullName)"
+        }
     }
 
-    # --- FAIL-FAST SAFETY CHECK ---
-    $PostCheck = Get-Content $TargetFile | Select-String -Pattern `
-    'client_id\s*=|client_secret\s*=|tenant_id\s*=|subscription_id\s*='
+    # ================= VERIFICATION =================
 
-    if ($PostCheck) {
-        Write-Error "[$Branch] ❌ Sensitive values still detected after sanitization. Aborting."
+    $Leaks = Get-ChildItem -Recurse -Filter "primary.auto.tfvars" -File |
+        Select-String -Pattern 'client_id\s*=|client_secret\s*=|tenant_id\s*=|subscription_id\s*='
+
+    if ($Leaks) {
+        Write-Error "❌ Secrets still found in $Branch. Aborting."
+        $Leaks | ForEach-Object {
+            Add-Content $SanitizeLog "[$Branch] LEAK: $($_.Path):$($_.LineNumber)"
+        }
         exit 1
     }
 
-    # --- COMMIT CLEAN STATE ---
-    git add .
-    git commit -m "Initial clean commit (sanitized for branch $Branch)" | Out-Null
+    # ================= COMMIT =================
 
-    # --- REPLACE ORIGINAL BRANCH LOCALLY ---
+    git add . | Out-Null
+    git commit -m "Initial commit (sanitized for branch $Branch)" | Out-Null
+    Add-Content $HistoryLog "[$Branch] History reset to single clean commit"
+
+    # Replace original branch
     git branch -D $Branch | Out-Null
-    git branch -m $TempBranch $Branch
+    git branch -m $Branch | Out-Null
 
-    "[$Branch] Sanitized successfully" | Tee-Object -FilePath $SummaryLog -Append
-}
+    # ================= PUSH CONFIRM =================
 
-# ================= PUSH CONTROL =================
-Write-Host ""
-Write-Host "All branches sanitized locally."
-Write-Host "You may now checkout and VERIFY any branch."
-Write-Host ""
-
-$PushChoice = Read-Host "Do you want to push changes now? (yes / no)"
-if ($PushChoice -ne "yes") {
-    Write-Host "No branches pushed."
-    exit
-}
-
-$Mode = Read-Host "Push one branch or all? (one / all)"
-
-if ($Mode -eq "one") {
-    $BranchName = Read-Host "Enter branch name to push"
-    git push origin $BranchName --force
-    "Pushed branch: $BranchName" | Out-File $PushLog -Append
-}
-elseif ($Mode -eq "all") {
-    foreach ($Branch in $Branches) {
-        git push origin $Branch --force
-        "Pushed branch: $Branch" | Out-File $PushLog -Append
+    Write-Host ""
+    $confirm = Read-Host "Do you want to PUSH branch '$Branch' to origin? (yes/no)"
+    if ($confirm -eq "yes") {
+        $confirm2 = Read-Host "⚠️  FINAL CONFIRM — This rewrites remote history. Type YES to continue"
+        if ($confirm2 -eq "YES") {
+            git push origin $Branch --force
+            Write-Host "✅ Pushed $Branch"
+        } else {
+            Write-Host "Skipped push for $Branch"
+        }
+    } else {
+        Write-Host "Skipped push for $Branch"
     }
 }
 
-Write-Host "Push complete."
+Write-Host "`n=== DONE ==="
+Write-Host "Sanitize log : $SanitizeLog"
+Write-Host "History log  : $HistoryLog"
