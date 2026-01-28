@@ -1,176 +1,112 @@
-# =========================================================
-# SANITIZE ALL BRANCHES + SINGLE COMMIT
-# Logs full changes line by line
-# Adds summary table
-# Interactive push per branch
-# =========================================================
+# ================= CONFIG =================
+$RepoUrl = "https://github.com/YOUR_ORG/YOUR_REPO.git"
+$RepoDir = "repo"
+$TargetFile = "primary.auto.tfvars"
 
-# -----------------------------
-# CONFIGURATION
-# -----------------------------
-$RepoUrl = "https://github.com/your-org/Azure_Terraform_NonProduction.git"  # Update
-$RepoFolder = "Azure_Terraform_NonProduction"
-$LogFolder = Join-Path $PSScriptRoot "logs"
-$SanitizeLog = Join-Path $LogFolder "sanitize_all_branches.log"
-$SummaryLog = Join-Path $LogFolder "sanitize_summary.log"
+$SensitivePatterns = @(
+    '^\s*client_id\s*=.*$',
+    '^\s*client_secret\s*=.*$',
+    '^\s*tenant_id\s*=.*$',
+    '^\s*subscription_id\s*=.*$'
+)
 
-# Clear previous logs
-if (Test-Path $LogFolder) { Remove-Item -Recurse -Force $LogFolder }
-New-Item -ItemType Directory -Path $LogFolder | Out-Null
-"" | Out-File $SanitizeLog
-"" | Out-File $SummaryLog
+$SanitizeLog = "..\sanitize.log"
+$SummaryLog  = "..\summary.log"
+$PushLog     = "..\push.log"
 
-# -----------------------------
-# SAFETY CHECK
-# -----------------------------
-$FullRepoPath = Join-Path $PSScriptRoot $RepoFolder
-if (Test-Path $FullRepoPath) {
-    Write-Host "❌ Folder '$RepoFolder' already exists. Deleting for fresh start..."
-    Remove-Item -Recurse -Force $FullRepoPath
-}
+# ================= INIT =================
+git clone $RepoUrl $RepoDir
+cd $RepoDir
 
-# -----------------------------
-# STEP 1: Clone repo
-# -----------------------------
-Write-Host "📥 Cloning repo..."
-git clone $RepoUrl $RepoFolder
-Set-Location $FullRepoPath
-git config core.pager cat
-Add-Content $SanitizeLog "$(Get-Date) - Cloned repo $RepoUrl"
-
-# -----------------------------
-# STEP 2: Fetch all remote branches
-# -----------------------------
-Write-Host "🔄 Fetching all remote branches..."
 git fetch --all
-Add-Content $SanitizeLog "$(Get-Date) - Fetched all remote branches"
-
-# -----------------------------
-# STEP 3: Create local branches
-# -----------------------------
-Write-Host "🌿 Creating local branches..."
-$remoteBranches = git branch -r | Where-Object { $_ -notmatch 'HEAD' }
-foreach ($r in $remoteBranches) {
-    $rName = $r.Trim()
-    $localName = ($rName -replace '^origin/', '')
-    if (-not (git show-ref --verify --quiet "refs/heads/$localName")) {
-        git branch $localName $rName
-        Add-Content $SanitizeLog "$(Get-Date) - Created local branch $localName from $rName"
-    }
+$Branches = git branch -r | Where-Object { $_ -notmatch "HEAD" } | ForEach-Object {
+    $_.Trim().Replace("origin/","")
 }
 
-# -----------------------------
-# STEP 4: Sanitize and rewrite each branch
-# -----------------------------
-$branches = git branch --format="%(refname:short)"
-$summaryData = @()
+"Starting sanitization: $(Get-Date)" | Out-File $SanitizeLog
+"Branch Summary:" | Out-File $SummaryLog
+"" | Out-File $PushLog
 
-foreach ($b in $branches) {
-    Write-Host "🌿 Processing branch $b..."
-    Add-Content $SanitizeLog "`n$(Get-Date) - Processing branch $b"
+# ================= PROCESS BRANCHES =================
+foreach ($Branch in $Branches) {
 
-    git checkout $b
+    "Processing branch: $Branch" | Tee-Object -FilePath $SummaryLog -Append
 
-    # Find all primary.auto.tfvars
-    $files = Get-ChildItem -Path . -Recurse -Filter "primary.auto.tfvars" -ErrorAction SilentlyContinue
-    $filesChanged = 0
-    $linesChanged = 0
+    git checkout -B $Branch origin/$Branch | Out-Null
 
-    if ($files.Count -eq 0) {
-        Write-Host "   No primary.auto.tfvars found in $b"
-        Add-Content $SanitizeLog "   No primary.auto.tfvars found in $b"
-    } else {
-        foreach ($f in $files) {
-            $contentBefore = Get-Content $f.FullName
-            $contentAfter = $contentBefore `
-                -replace 'client_id\s*=\s*".*"', 'client_id = ""' `
-                -replace 'client_secret\s*=\s*".*"', 'client_secret = ""' `
-                -replace 'tenant_id\s*=\s*".*"', 'tenant_id = ""' `
-                -replace 'subscription_id\s*=\s*".*"', 'subscription_id = ""'
+    # --- CREATE ORPHAN ---
+    $TempBranch = "sanitize-temp-$Branch"
+    git checkout --orphan $TempBranch | Out-Null
 
-            if ($contentBefore -ne $contentAfter) {
-                Set-Content $f.FullName $contentAfter
-                git add $f.FullName
-                Add-Content $SanitizeLog "   Sanitized file: $($f.FullName)"
+    git rm -rf . | Out-Null
 
-                $filesChanged++
-                # Count line changes
-                for ($i=0; $i -lt [Math]::Max($contentBefore.Count, $contentAfter.Count); $i++) {
-                    $beforeLine = if ($i -lt $contentBefore.Count) { $contentBefore[$i] } else { "" }
-                    $afterLine  = if ($i -lt $contentAfter.Count)  { $contentAfter[$i] } else { "" }
-                    if ($beforeLine -ne $afterLine) { 
-                        $linesChanged++
-                        Add-Content $SanitizeLog "       Line $($i+1): '$beforeLine' => '$afterLine'"
-                    }
-                }
-            }
+    # --- COPY FILES FROM ORIGINAL BRANCH ---
+    git checkout $Branch -- . | Out-Null
+
+    # --- SANITIZE INSIDE ORPHAN ---
+    if (Test-Path $TargetFile) {
+        $Content = Get-Content $TargetFile
+        $OriginalCount = $Content.Count
+
+        foreach ($Pattern in $SensitivePatterns) {
+            $Content = $Content | Where-Object { $_ -notmatch $Pattern }
         }
+
+        $Content | Set-Content $TargetFile
+        $NewCount = $Content.Count
+
+        "[$Branch] Sanitized $TargetFile (lines: $OriginalCount → $NewCount)" |
+            Tee-Object -FilePath $SanitizeLog -Append
+    }
+    else {
+        "[$Branch] $TargetFile not found" |
+            Tee-Object -FilePath $SanitizeLog -Append
     }
 
-    # -----------------------------
-    # STEP 4a: Create fresh single commit
-    # -----------------------------
-    $TempBranch = "${b}_SANITIZE_TEMP"
+    # --- FAIL-FAST SAFETY CHECK ---
+    $PostCheck = Get-Content $TargetFile | Select-String -Pattern `
+    'client_id\s*=|client_secret\s*=|tenant_id\s*=|subscription_id\s*='
 
-    git checkout --orphan $TempBranch
-    git rm -rf --cached . 2>$null
-    git clean -fdx
+    if ($PostCheck) {
+        Write-Error "[$Branch] ❌ Sensitive values still detected after sanitization. Aborting."
+        exit 1
+    }
 
-    git checkout $b -- .
+    # --- COMMIT CLEAN STATE ---
     git add .
-    git commit -m "Initial commit (sanitized for branch $b)"
-    Add-Content $SanitizeLog "   Created single sanitized commit on $TempBranch"
+    git commit -m "Initial clean commit (sanitized for branch $Branch)" | Out-Null
 
-    git branch -f $b $TempBranch
-    git checkout $b
-    git branch -D $TempBranch
-    Add-Content $SanitizeLog "   Overwrote branch $b with sanitized commit"
+    # --- REPLACE ORIGINAL BRANCH LOCALLY ---
+    git branch -D $Branch | Out-Null
+    git branch -m $TempBranch $Branch
 
-    # -----------------------------
-    # Add to summary
-    # -----------------------------
-    $summaryData += [PSCustomObject]@{
-        Branch = $b
-        FilesSanitized = $filesChanged
-        LinesChanged  = $linesChanged
-    }
+    "[$Branch] Sanitized successfully" | Tee-Object -FilePath $SummaryLog -Append
+}
 
-    # -----------------------------
-    # STEP 4b: Interactive push
-    # -----------------------------
-    $push1 = Read-Host "Do you want to push branch '$b' to origin? (yes/no)"
-    if ($push1 -eq "yes") {
-        $push2 = Read-Host "ARE YOU SURE? This will overwrite remote branch '$b' (yes/no)"
-        if ($push2 -eq "yes") {
-            Write-Host "🚀 Pushing sanitized branch $b..."
-            git push --force origin $b
-            Add-Content $SanitizeLog "$(Get-Date) - Pushed sanitized branch $b to remote"
-            Write-Host "✅ Branch $b pushed"
-        } else {
-            Write-Host "❌ Skipped pushing branch $b"
-            Add-Content $SanitizeLog "$(Get-Date) - Skipped pushing branch $b"
-        }
-    } else {
-        Write-Host "❌ Skipped pushing branch $b"
-        Add-Content $SanitizeLog "$(Get-Date) - Skipped pushing branch $b"
+# ================= PUSH CONTROL =================
+Write-Host ""
+Write-Host "All branches sanitized locally."
+Write-Host "You may now checkout and VERIFY any branch."
+Write-Host ""
+
+$PushChoice = Read-Host "Do you want to push changes now? (yes / no)"
+if ($PushChoice -ne "yes") {
+    Write-Host "No branches pushed."
+    exit
+}
+
+$Mode = Read-Host "Push one branch or all? (one / all)"
+
+if ($Mode -eq "one") {
+    $BranchName = Read-Host "Enter branch name to push"
+    git push origin $BranchName --force
+    "Pushed branch: $BranchName" | Out-File $PushLog -Append
+}
+elseif ($Mode -eq "all") {
+    foreach ($Branch in $Branches) {
+        git push origin $Branch --force
+        "Pushed branch: $Branch" | Out-File $PushLog -Append
     }
 }
 
-# -----------------------------
-# STEP 5: Write summary log
-# -----------------------------
-Add-Content $SummaryLog "Branch Sanitization Summary"
-Add-Content $SummaryLog "==========================="
-$summaryData | Sort-Object Branch | ForEach-Object {
-    Add-Content $SummaryLog ("Branch: {0}, Files Sanitized: {1}, Lines Changed: {2}" -f $_.Branch, $_.FilesSanitized, $_.LinesChanged)
-}
-
-# -----------------------------
-# STEP 6: Final verification
-# -----------------------------
-Write-Host "`n✅ ALL BRANCHES SANITIZED"
-Write-Host "Branches:"
-git branch
-Write-Host "`nLogs saved to: $SanitizeLog"
-Write-Host "Summary saved to: $SummaryLog"
-Write-Host "`nReview carefully. Push has been interactive for each branch."
+Write-Host "Push complete."
