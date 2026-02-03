@@ -15,3 +15,27 @@ param maintenanceIntervalWeeks = 1
 param notAllowedDates = []
 param notAllowedTime = []
 param timeInWeek = []
+
+
+
+
+
+// AKS Cluster Configuration
+param systemNodePoolName = 'systempool'
+param systemNodeCount = 3
+param systemNodeVmSize = 'Standard_D4s_v3'
+param availabilityZones = ['1', '2', '3']
+param networkPlugin = 'azure'
+param networkPluginMode = 'overlay'
+param loadBalancerSku = 'standard'
+param outboundType = 'userDefinedRouting'
+
+// ACR Configuration
+param acrSku = 'Premium'
+param acrAdminUserEnabled = false
+param privateDnsZoneName = 'privatelink.azurecr.us'
+
+// Azure Monitor and Grafana Integration
+param enableAzureMonitorMetrics = true
+param azureMonitorWorkspaceResourceId = '/subscriptions/<subscription-id>/resourceGroups/<resource-group>/providers/Microsoft.Monitor/accounts/<workspace-name>'
+param grafanaResourceId = '/subscriptions/<subscription-id>/resourceGroups/<resource-group>/providers/Microsoft.Dashboard/grafana/<grafana-name>'
