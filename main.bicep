@@ -30,3 +30,40 @@ module maintenanceConfig './modules/maintenanceConfiguration.bicep' = {
     timeInWeek: timeInWeek
   }
 }
+
+
+
+
+param enableAzureMonitorMetrics bool
+param azureMonitorWorkspaceResourceId string
+param grafanaResourceId string
+param systemNodePoolName string
+param systemNodeCount int
+param systemNodeVmSize string
+param availabilityZones array
+param networkPlugin string
+param networkPluginMode string
+param loadBalancerSku string
+param outboundType string
+param acrSku string
+param acrAdminUserEnabled bool
+param privateDnsZoneName string
+
+
+
+
+
+enableAzureMonitorMetrics: enableAzureMonitorMetrics
+azureMonitorWorkspaceResourceId: azureMonitorWorkspaceResourceId
+grafanaResourceId: grafanaResourceId
+systemNodePoolName: systemNodePoolName
+systemNodeCount: systemNodeCount
+systemNodeVmSize: systemNodeVmSize
+availabilityZones: availabilityZones
+networkPlugin: networkPlugin
+networkPluginMode: networkPluginMode
+loadBalancerSku: loadBalancerSku
+outboundType: outboundType
+acrSku: acrSku
+acrAdminUserEnabled: acrAdminUserEnabled
+privateDnsZoneName: privateDnsZoneName
