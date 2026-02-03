@@ -9,3 +9,14 @@ output acrName string = acr.name
 param enableAzureMonitorMetrics bool
 param azureMonitorWorkspaceResourceId string
 param grafanaResourceId string
+
+
+azureMonitorProfile: enableAzureMonitorMetrics ? {
+      metrics: {
+        enabled: true
+        kubeStateMetrics: {
+          metricAnnotationsAllowList: ''
+          metricLabelsAllowlist: ''
+        }
+      }
+    } : null
