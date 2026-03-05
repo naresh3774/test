@@ -1,150 +1,143 @@
 param (
-    [string]$DbProfile = "dev-databricks",
-    [string]$BackupRoot = "$(Join-Path $PWD ('Databricks-Full-Backup-' + (Get-Date -Format 'yyyyMMdd-HHmmss')))"
+    [string]$DbProfile = "dev-databricks"
 )
 
-# Create backup directory
-Write-Host "Creating backup directory: $BackupRoot"
+# Generate timestamped backup root folder
+$BackupRoot = Join-Path $PWD ("Databricks-Full-Backup-" + (Get-Date -Format "yyyyMMdd-HHmmss"))
 New-Item -ItemType Directory -Path $BackupRoot -Force | Out-Null
 
-# =============================
-# Helper functions
-# =============================
+# Subfolders
+$WorkspaceBackup = Join-Path $BackupRoot "workspace"
+$JobsBackup      = Join-Path $BackupRoot "jobs"
+$ClustersBackup  = Join-Path $BackupRoot "clusters"
+$PoliciesBackup  = Join-Path $BackupRoot "cluster-policies"
+$SecretsBackup   = Join-Path $BackupRoot "secrets"
+$ReposBackup     = Join-Path $BackupRoot "repos"
+$DbfsBackup      = Join-Path $BackupRoot "dbfs"
+$PoolsBackup     = Join-Path $BackupRoot "instance-pools"
+$GlobalInitBackup= Join-Path $BackupRoot "global-init-scripts"
 
-function Export-WorkspaceSafe {
+# Create subfolders
+$folders = @($WorkspaceBackup, $JobsBackup, $ClustersBackup, $PoliciesBackup, $SecretsBackup, $ReposBackup, $DbfsBackup, $PoolsBackup, $GlobalInitBackup)
+foreach ($f in $folders) { New-Item -ItemType Directory -Path $f -Force | Out-Null }
+
+# -----------------------------
+# Helper functions
+# -----------------------------
+function Safe-ExportWorkspace {
     param([string]$SourcePath, [string]$TargetPath)
     try {
-        Write-Host "Exporting workspace: $SourcePath -> $TargetPath"
         databricks workspace export-dir $SourcePath $TargetPath --profile $DbProfile
     } catch {
-        Write-Warning "Failed to export $SourcePath. Skipping. Error: $_"
+        Write-Warning "Failed to export workspace path '$SourcePath'. Skipping. Error: $_"
     }
 }
 
-function Copy-DbfsSafe {
-    param ([string]$DbfsPath, [string]$LocalPath)
+function Safe-CopyDbfs {
+    param([string]$DbfsPath, [string]$LocalPath)
     try {
-        Write-Host "Copying DBFS path: $DbfsPath -> $LocalPath"
         databricks fs cp -r $DbfsPath $LocalPath --profile $DbProfile
     } catch {
-        Write-Warning "Failed to copy DBFS path $DbfsPath. Skipping. Error: $_"
+        Write-Warning "Failed to copy DBFS path '$DbfsPath'. Skipping. Error: $_"
     }
 }
 
-# =============================
-# Backup Workspace Notebooks
-# =============================
-$WorkspaceBackup = Join-Path $BackupRoot "workspace"
-New-Item -ItemType Directory -Path $WorkspaceBackup -Force | Out-Null
-Export-WorkspaceSafe "/" $WorkspaceBackup
+# -----------------------------
+# Backup Workspace
+# -----------------------------
+Write-Host "Exporting workspace notebooks ..."
+Safe-ExportWorkspace "/" $WorkspaceBackup
 
-# =============================
+# -----------------------------
 # Backup Jobs
-# =============================
-$JobsBackup = Join-Path $BackupRoot "jobs"
-New-Item -ItemType Directory -Path $JobsBackup -Force | Out-Null
+# -----------------------------
+Write-Host "Exporting jobs ..."
 try {
-    $jobs = databricks jobs list --profile $DbProfile --output JSON | ConvertFrom-Json
-    foreach ($job in $jobs) {
-        $JobFile = Join-Path $JobsBackup ("job_" + $job.job_id + ".json")
-        $job | ConvertTo-Json -Depth 10 | Out-File $JobFile -Force
-    }
+    $jobs = databricks jobs list --profile $DbProfile | ConvertFrom-Json
+    $jobs | ConvertTo-Json -Depth 10 | Out-File (Join-Path $JobsBackup "jobs.json") -Encoding UTF8
 } catch {
     Write-Warning "Failed to backup jobs: $_"
 }
 
-# =============================
+# -----------------------------
 # Backup Clusters
-# =============================
-$ClustersBackup = Join-Path $BackupRoot "clusters"
-New-Item -ItemType Directory -Path $ClustersBackup -Force | Out-Null
+# -----------------------------
+Write-Host "Exporting clusters ..."
 try {
-    $clusters = databricks clusters list --profile $DbProfile --output JSON | ConvertFrom-Json
-    foreach ($cluster in $clusters) {
-        $ClusterFile = Join-Path $ClustersBackup ("cluster_" + $cluster.cluster_id + ".json")
-        $cluster | ConvertTo-Json -Depth 10 | Out-File $ClusterFile -Force
-    }
+    $clusters = databricks clusters list --profile $DbProfile | ConvertFrom-Json
+    $clusters | ConvertTo-Json -Depth 10 | Out-File (Join-Path $ClustersBackup "clusters.json") -Encoding UTF8
 } catch {
     Write-Warning "Failed to backup clusters: $_"
 }
 
-# =============================
+# -----------------------------
 # Backup Cluster Policies
-# =============================
-$PoliciesBackup = Join-Path $BackupRoot "cluster-policies"
-New-Item -ItemType Directory -Path $PoliciesBackup -Force | Out-Null
+# -----------------------------
+Write-Host "Exporting cluster policies ..."
 try {
-    $policies = databricks cluster-policies list --profile $DbProfile --output JSON | ConvertFrom-Json
-    foreach ($policy in $policies) {
-        $PolicyFile = Join-Path $PoliciesBackup ("policy_" + $policy.policy_id + ".json")
-        $policy | ConvertTo-Json -Depth 10 | Out-File $PolicyFile -Force
-    }
+    $policies = databricks cluster-policies list --profile $DbProfile | ConvertFrom-Json
+    $policies | ConvertTo-Json -Depth 10 | Out-File (Join-Path $PoliciesBackup "cluster-policies.json") -Encoding UTF8
 } catch {
     Write-Warning "Failed to backup cluster policies: $_"
 }
 
-# =============================
-# Backup Instance Pools
-# =============================
-$PoolsBackup = Join-Path $BackupRoot "instance-pools"
-New-Item -ItemType Directory -Path $PoolsBackup -Force | Out-Null
+# -----------------------------
+# Backup Secret Scopes & Secrets
+# -----------------------------
+Write-Host "Exporting secret scopes and secrets ..."
 try {
-    $pools = databricks instance-pools list --profile $DbProfile --output JSON | ConvertFrom-Json
-    foreach ($pool in $pools) {
-        $PoolFile = Join-Path $PoolsBackup ("pool_" + $pool.instance_pool_id + ".json")
-        $pool | ConvertTo-Json -Depth 10 | Out-File $PoolFile -Force
-    }
-} catch {
-    Write-Warning "Failed to backup instance pools: $_"
-}
-
-# =============================
-# Backup Secret Scopes and Secrets
-# =============================
-$SecretsBackup = Join-Path $BackupRoot "secrets"
-New-Item -ItemType Directory -Path $SecretsBackup -Force | Out-Null
-try {
-    $scopes = databricks secrets list-scopes --profile $DbProfile --output JSON | ConvertFrom-Json
+    $scopes = databricks secrets list-scopes --profile $DbProfile | ConvertFrom-Json
     foreach ($scope in $scopes) {
-        $ScopeName = $scope.name
-        $SecretsScopeBackup = Join-Path $SecretsBackup $ScopeName
-        New-Item -ItemType Directory -Path $SecretsScopeBackup -Force | Out-Null
+        $scopeName = $scope.name
         try {
-            $secrets = databricks secrets list-secrets --scope $ScopeName --profile $DbProfile --output JSON | ConvertFrom-Json
-            foreach ($secret in $secrets) {
-                $SecretFile = Join-Path $SecretsScopeBackup ($secret.key + ".txt")
-                # Can't backup secret values directly due to security, just storing key names
-                "SECRET_KEY_ONLY" | Out-File $SecretFile -Force
-            }
+            $secrets = databricks secrets list-secrets --scope $scopeName --profile $DbProfile | ConvertFrom-Json
+            $secrets | ConvertTo-Json -Depth 10 | Out-File (Join-Path $SecretsBackup ("scope_" + $scopeName + ".json")) -Encoding UTF8
         } catch {
-            Write-Warning "Error listing secrets for scope ${ScopeName}: $_"
+            Write-Warning "Error listing secrets for scope '$scopeName': $_"
         }
     }
 } catch {
     Write-Warning "Failed to list secret scopes: $_"
 }
 
-# =============================
+# -----------------------------
 # Backup Repos
-# =============================
-$ReposBackup = Join-Path $BackupRoot "repos"
-New-Item -ItemType Directory -Path $ReposBackup -Force | Out-Null
+# -----------------------------
+Write-Host "Exporting repos ..."
 try {
-    $repos = databricks repos list --profile $DbProfile --output JSON | ConvertFrom-Json
-    foreach ($repo in $repos) {
-        $RepoFile = Join-Path $ReposBackup ("repo_" + $repo.id + ".json")
-        $repo | ConvertTo-Json -Depth 10 | Out-File $RepoFile -Force
-    }
+    $repos = databricks repos list --profile $DbProfile | ConvertFrom-Json
+    $repos | ConvertTo-Json -Depth 10 | Out-File (Join-Path $ReposBackup "repos.json") -Encoding UTF8
 } catch {
     Write-Warning "Failed to backup repos: $_"
 }
 
-# =============================
+# -----------------------------
 # Backup DBFS
-# =============================
-$DbfsBackup = Join-Path $BackupRoot "dbfs"
-New-Item -ItemType Directory -Path $DbfsBackup -Force | Out-Null
-Copy-DbfsSafe "/user" (Join-Path $DbfsBackup "user")
+# -----------------------------
+Write-Host "Copying DBFS user files ..."
+Safe-CopyDbfs "/user" (Join-Path $DbfsBackup "user")
+
+# -----------------------------
+# Backup Instance Pools
+# -----------------------------
+Write-Host "Exporting instance pools ..."
+try {
+    $pools = databricks instance-pools list --profile $DbProfile | ConvertFrom-Json
+    $pools | ConvertTo-Json -Depth 10 | Out-File (Join-Path $PoolsBackup "instance-pools.json") -Encoding UTF8
+} catch {
+    Write-Warning "Failed to backup instance pools: $_"
+}
+
+# -----------------------------
+# Backup Global Init Scripts
+# -----------------------------
+Write-Host "Exporting global init scripts ..."
+try {
+    $scripts = databricks global-init-scripts list --profile $DbProfile | ConvertFrom-Json
+    $scripts | ConvertTo-Json -Depth 10 | Out-File (Join-Path $GlobalInitBackup "global-init-scripts.json") -Encoding UTF8
+} catch {
+    Write-Warning "Failed to backup global init scripts: $_"
+}
 
 Write-Host "FULL BACKUP COMPLETE"
 Write-Host "Backup location: $BackupRoot"
