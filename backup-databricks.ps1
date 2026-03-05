@@ -1,18 +1,18 @@
 $PROFILE="dev-databricks"
 
 $DATE=Get-Date -Format "yyyyMMdd-HHmmss"
-$BACKUP_DIR="Databricks-Full-Backup-$DATE"
+$BACKUP="Databricks-Full-Backup-$DATE"
 
-Write-Host "Creating backup directory $BACKUP_DIR"
-New-Item -ItemType Directory -Path $BACKUP_DIR
+Write-Host "Creating backup directory $BACKUP"
+New-Item -ItemType Directory -Path $BACKUP
 
 ####################################
 # WORKSPACE NOTEBOOKS
 ####################################
 
-Write-Host "Backing up workspace notebooks..."
+Write-Host "Backing up workspace..."
 
-databricks workspace export-dir / "$BACKUP_DIR/workspace" -p $PROFILE
+databricks workspace export-dir / "$BACKUP/workspace" -p $PROFILE
 
 ####################################
 # JOBS
@@ -20,7 +20,7 @@ databricks workspace export-dir / "$BACKUP_DIR/workspace" -p $PROFILE
 
 Write-Host "Backing up jobs..."
 
-databricks jobs list -p $PROFILE -o json | Out-File "$BACKUP_DIR/jobs.json"
+databricks jobs list -o json -p $PROFILE | Out-File "$BACKUP/jobs.json"
 
 ####################################
 # CLUSTERS
@@ -28,7 +28,7 @@ databricks jobs list -p $PROFILE -o json | Out-File "$BACKUP_DIR/jobs.json"
 
 Write-Host "Backing up clusters..."
 
-databricks clusters list -p $PROFILE -o json | Out-File "$BACKUP_DIR/clusters.json"
+databricks clusters list -o json -p $PROFILE | Out-File "$BACKUP/clusters.json"
 
 ####################################
 # REPOS
@@ -36,15 +36,29 @@ databricks clusters list -p $PROFILE -o json | Out-File "$BACKUP_DIR/clusters.js
 
 Write-Host "Backing up repos..."
 
-databricks repos list -p $PROFILE -o json | Out-File "$BACKUP_DIR/repos.json"
+databricks repos list -o json -p $PROFILE | Out-File "$BACKUP/repos.json"
 
 ####################################
-# SECRET SCOPES
+# SECRET SCOPES + SECRETS
 ####################################
 
 Write-Host "Backing up secret scopes..."
 
-databricks secrets list-scopes -p $PROFILE -o json | Out-File "$BACKUP_DIR/secret_scopes.json"
+$scopes = databricks secrets list-scopes -o json -p $PROFILE | ConvertFrom-Json
+
+$secretDir="$BACKUP/secrets"
+New-Item -ItemType Directory -Path $secretDir
+
+foreach ($scope in $scopes.scopes) {
+
+    $scopeName=$scope.name
+
+    Write-Host "Exporting secrets from scope $scopeName"
+
+    databricks secrets list-secrets $scopeName -o json -p $PROFILE |
+    Out-File "$secretDir/$scopeName.json"
+
+}
 
 ####################################
 # INSTANCE POOLS
@@ -52,7 +66,8 @@ databricks secrets list-scopes -p $PROFILE -o json | Out-File "$BACKUP_DIR/secre
 
 Write-Host "Backing up instance pools..."
 
-databricks instance-pools list -p $PROFILE -o json | Out-File "$BACKUP_DIR/instance_pools.json"
+databricks instance-pools list -o json -p $PROFILE |
+Out-File "$BACKUP/pools.json"
 
 ####################################
 # CLUSTER POLICIES
@@ -60,7 +75,8 @@ databricks instance-pools list -p $PROFILE -o json | Out-File "$BACKUP_DIR/insta
 
 Write-Host "Backing up cluster policies..."
 
-databricks cluster-policies list -p $PROFILE -o json | Out-File "$BACKUP_DIR/cluster_policies.json"
+databricks cluster-policies list -o json -p $PROFILE |
+Out-File "$BACKUP/policies.json"
 
 ####################################
 # GLOBAL INIT SCRIPTS
@@ -68,7 +84,8 @@ databricks cluster-policies list -p $PROFILE -o json | Out-File "$BACKUP_DIR/clu
 
 Write-Host "Backing up global init scripts..."
 
-databricks global-init-scripts list -p $PROFILE -o json | Out-File "$BACKUP_DIR/global_init_scripts.json"
+databricks global-init-scripts list -o json -p $PROFILE |
+Out-File "$BACKUP/init_scripts.json"
 
 ####################################
 # DBFS
@@ -76,13 +93,16 @@ databricks global-init-scripts list -p $PROFILE -o json | Out-File "$BACKUP_DIR/
 
 Write-Host "Backing up DBFS..."
 
-New-Item -ItemType Directory -Path "$BACKUP_DIR/dbfs"
+New-Item -ItemType Directory "$BACKUP/dbfs"
 
-databricks fs cp -r dbfs:/ "$BACKUP_DIR/dbfs" -p $PROFILE
+databricks fs cp -r dbfs:/FileStore "$BACKUP/dbfs/FileStore" -p $PROFILE
+databricks fs cp -r dbfs:/mnt "$BACKUP/dbfs/mnt" -p $PROFILE
+databricks fs cp -r dbfs:/user "$BACKUP/dbfs/user" -p $PROFILE
 
 ####################################
 
-Write-Host "--------------------------------"
-Write-Host "FULL BACKUP COMPLETED"
-Write-Host "Backup location: $BACKUP_DIR"
-Write-Host "--------------------------------"
+Write-Host ""
+Write-Host "===================================="
+Write-Host "BACKUP COMPLETE"
+Write-Host "Location: $BACKUP"
+Write-Host "===================================="
