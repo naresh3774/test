@@ -1,30 +1,88 @@
+# ---------------------------
+# Databricks Full Backup Script
+# Works with: New CLI, Azure Gov, Windows
+# ---------------------------
+
+# ---------------------------
+# 1. Set Profile
+# ---------------------------
+$env:DATABRICKS_CONFIG_PROFILE="dev-databricks"
+
+# Timestamp for backup folder
 $timestamp = Get-Date -Format "yyyyMMdd-HHmmss"
-$root = "Databricks-Backup-$timestamp"
+$backupRoot = "Databricks-Full-Backup-$timestamp"
 
-New-Item -ItemType Directory -Path $root
+Write-Host "Creating backup directory: $backupRoot"
+New-Item -ItemType Directory -Path $backupRoot
 
-Write-Host "Exporting workspace archive..."
+# Subfolders for structured backup
+$subfolders = @("workspace","jobs","clusters","repos","secrets","dbfs","pools","policies")
+foreach ($f in $subfolders) {
+    New-Item -ItemType Directory -Path "$backupRoot/$f" | Out-Null
+}
 
-databricks workspace export / "$root/workspace_backup.dbc" --format DBC
+# ---------------------------
+# 2. Backup Workspace Notebooks
+# ---------------------------
+Write-Host "Backing up workspace notebooks..."
+$workspaceBackupPath = "$backupRoot/workspace/workspace_backup.dbc"
+databricks workspace export-dir / $workspaceBackupPath --format DBC
 
-Write-Host "Exporting clusters..."
+# ---------------------------
+# 3. Backup Jobs
+# ---------------------------
+Write-Host "Backing up jobs..."
+$jobsJson = databricks jobs list --output json
+$jobsArray = $jobsJson | ConvertFrom-Json
+foreach ($job in $jobsArray) {
+    $jobId = $job.job_id
+    databricks jobs get $jobId --output json | Out-File "$backupRoot/jobs/job-$jobId.json"
+}
 
-databricks clusters list > "$root/clusters.txt"
+# ---------------------------
+# 4. Backup Clusters
+# ---------------------------
+Write-Host "Backing up clusters..."
+databricks clusters list --output json | Out-File "$backupRoot/clusters/clusters.json"
 
-Write-Host "Exporting jobs..."
+# ---------------------------
+# 5. Backup Repos
+# ---------------------------
+Write-Host "Backing up repos..."
+databricks repos list --output json | Out-File "$backupRoot/repos/repos.json"
 
-databricks jobs list > "$root/jobs.txt"
+# ---------------------------
+# 6. Backup Secret Scopes & Secrets
+# ---------------------------
+Write-Host "Backing up secret scopes and secrets..."
+$scopesJson = databricks secrets list-scopes --output json
+$scopesArray = $scopesJson | ConvertFrom-Json
 
-Write-Host "Exporting repos..."
+foreach ($scope in $scopesArray.scopes) {
+    $scopeName = $scope.name
+    databricks secrets list-secrets $scopeName --output json | Out-File "$backupRoot/secrets/$scopeName.json"
+}
 
-databricks repos list > "$root/repos.txt"
+# ---------------------------
+# 7. Backup DBFS
+# ---------------------------
+Write-Host "Backing up DBFS..."
+databricks fs cp dbfs:/ "$backupRoot/dbfs" --recursive
 
-Write-Host "Exporting secret scopes..."
+# ---------------------------
+# 8. Backup Instance Pools
+# ---------------------------
+Write-Host "Backing up instance pools..."
+databricks instance-pools list --output json | Out-File "$backupRoot/pools/pools.json"
 
-databricks secrets list-scopes > "$root/secrets.txt"
+# ---------------------------
+# 9. Backup Cluster Policies
+# ---------------------------
+Write-Host "Backing up cluster policies..."
+databricks cluster-policies list --output json | Out-File "$backupRoot/policies/policies.json"
 
-Write-Host "Exporting DBFS..."
-
-databricks fs cp -r dbfs:/ "$root/dbfs"
-
-Write-Host "Backup completed at $root"
+# ---------------------------
+# 10. Backup Completed
+# ---------------------------
+Write-Host "Backup completed successfully!"
+Write-Host "Backup location: $backupRoot"
