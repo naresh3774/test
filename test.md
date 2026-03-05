@@ -4,7 +4,10 @@ az resource show \
 --resource-type Microsoft.Databricks/workspaces \
 > workspace_arm_config.json
 
-
+Remove-Item Env:ARM_CLIENT_ID
+Remove-Item Env:ARM_CLIENT_SECRET
+Remove-Item Env:ARM_TENANT_ID
+Remove-Item Env:ARM_ENVIRONMENT
 
 pip install databricks-cli
 
