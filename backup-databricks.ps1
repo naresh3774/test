@@ -108,9 +108,7 @@ foreach ($scope in $scopes.scopes) {
 
 Write-Host "Exporting DBFS user files..."
 
-databricks fs cp `
-dbfs:/user `
-"$BACKUP/dbfs/user" `
+databricks fs cp dbfs:/FileStore "$BACKUP/dbfs/FileStore" `
 --recursive `
 -p $PROFILE
 
