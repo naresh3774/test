@@ -1,110 +1,102 @@
-# backup-databricks-full.ps1
-# Full Databricks Workspace Backup Script
-# Works with CLI v0.291.0 on Windows
-# Replace <profile> with your Databricks CLI profile
-
+# backup-databricks.ps1
 param (
-    [string]$Profile = "dev-databricks",
-    [string]$BackupRoot = "$PWD\Databricks-Full-Backup-$(Get-Date -Format yyyyMMdd-HHmmss)"
+    [string]$Profile = "dev-databricks"
 )
 
-# Create backup folder
-Write-Host "Creating backup directory: $BackupRoot"
+# Root backup folder
+$timestamp = Get-Date -Format "yyyyMMdd-HHmmss"
+$BackupRoot = Join-Path -Path (Get-Location) -ChildPath "Databricks-FULL-Backup-$timestamp"
 New-Item -ItemType Directory -Force -Path $BackupRoot | Out-Null
+Write-Host "Backup directory created: $BackupRoot"
 
-# =======================
-# 1. Backup Workspace Notebooks
-# =======================
-Write-Host "`nBacking up workspace notebooks ..."
-$workspaceItems = databricks workspace list / -p $Profile | ForEach-Object {
-    $_.Trim()
-} | Where-Object { $_ -ne "" }
-
-foreach ($item in $workspaceItems) {
-    # Skip non-notebook files like .bash_history
-    if ($item -like "*.py" -or $item -like "*.scala" -or $item -like "*.sql" -or $item -like "*.dbc" -or $item -like "*.ipynb" -or $item -like "*.sh") {
-        # Sanitize filename
-        $SafePath = ($item -replace '[:<>|?*]', '_') -replace '\\', '_'
-        $TargetPath = Join-Path $BackupRoot "workspace\$SafePath"
-        $dir = Split-Path $TargetPath
-        if (!(Test-Path $dir)) { New-Item -ItemType Directory -Force -Path $dir | Out-Null }
-        databricks workspace export $item $TargetPath -p $Profile -o
-    } else {
-        # Export directory recursively
-        $SafeDir = ($item -replace '[:<>|?*]', '_') -replace '\\', '_'
-        $TargetDir = Join-Path $BackupRoot "workspace\$SafeDir"
-        New-Item -ItemType Directory -Force -Path $TargetDir | Out-Null
-        databricks workspace export-dir $item $TargetDir -p $Profile
-    }
+# Helper function to sanitize Windows filenames
+function Sanitize-FileName {
+    param ([string]$name)
+    return ($name -replace '[:<>"/\\|?*]', '_')
 }
 
-# =======================
-# 2. Backup Jobs
-# =======================
+# -----------------------------
+# Backup workspace notebooks
+# -----------------------------
+Write-Host "`nBacking up workspace notebooks ..."
+$WorkspaceBackupDir = Join-Path $BackupRoot "workspace"
+New-Item -ItemType Directory -Force -Path $WorkspaceBackupDir | Out-Null
+
+$exportWorkspace = databricks workspace export-dir / $WorkspaceBackupDir -p $Profile -o json 2>$null
+
+Write-Host "Workspace notebooks backup complete."
+
+# -----------------------------
+# Backup jobs
+# -----------------------------
 Write-Host "`nBacking up jobs ..."
-$jobs = databricks jobs list -p $Profile | ConvertFrom-Json
+$jobs = databricks jobs list -p $Profile -o json | ConvertFrom-Json
 $jobs | ConvertTo-Json -Depth 10 | Out-File "$BackupRoot\jobs.json" -Force
+Write-Host "Jobs backup complete."
 
-# =======================
-# 3. Backup Clusters
-# =======================
+# -----------------------------
+# Backup clusters
+# -----------------------------
 Write-Host "`nBacking up clusters ..."
-$clusters = databricks clusters list -p $Profile | ConvertFrom-Json
+$clusters = databricks clusters list -p $Profile -o json | ConvertFrom-Json
 $clusters | ConvertTo-Json -Depth 10 | Out-File "$BackupRoot\clusters.json" -Force
+Write-Host "Clusters backup complete."
 
-# =======================
-# 4. Backup Cluster Policies
-# =======================
+# -----------------------------
+# Backup cluster policies
+# -----------------------------
 Write-Host "`nBacking up cluster policies ..."
-$policies = databricks cluster-policies list -p $Profile | ConvertFrom-Json
+$policies = databricks cluster-policies list -p $Profile -o json | ConvertFrom-Json
 $policies | ConvertTo-Json -Depth 10 | Out-File "$BackupRoot\cluster_policies.json" -Force
+Write-Host "Cluster policies backup complete."
 
-# =======================
-# 5. Backup Instance Pools
-# =======================
+# -----------------------------
+# Backup instance pools
+# -----------------------------
 Write-Host "`nBacking up instance pools ..."
-$pools = databricks instance-pools list -p $Profile | ConvertFrom-Json
+$pools = databricks instance-pools list -p $Profile -o json | ConvertFrom-Json
 $pools | ConvertTo-Json -Depth 10 | Out-File "$BackupRoot\instance_pools.json" -Force
+Write-Host "Instance pools backup complete."
 
-# =======================
-# 6. Backup Repos
-# =======================
+# -----------------------------
+# Backup repos
+# -----------------------------
 Write-Host "`nBacking up repos ..."
-$repos = databricks repos list -p $Profile | ConvertFrom-Json
+$repos = databricks repos list -p $Profile -o json | ConvertFrom-Json
 $repos | ConvertTo-Json -Depth 10 | Out-File "$BackupRoot\repos.json" -Force
+Write-Host "Repos backup complete."
 
-# =======================
-# 7. Backup Secret Scopes and Secrets
-# =======================
+# -----------------------------
+# Backup secret scopes and secrets
+# -----------------------------
 Write-Host "`nBacking up secret scopes and secrets ..."
-$scopes = databricks secrets list-scopes -p $Profile | ConvertFrom-Json
-$BackupSecretsDir = Join-Path $BackupRoot "secrets"
-New-Item -ItemType Directory -Force -Path $BackupSecretsDir | Out-Null
+$secretsDir = Join-Path $BackupRoot "secrets"
+New-Item -ItemType Directory -Force -Path $secretsDir | Out-Null
+
+$scopes = databricks secrets list-scopes -p $Profile -o json | ConvertFrom-Json
 
 foreach ($scope in $scopes) {
     $scopeName = $scope.name
-    $scopeSecrets = databricks secrets list-secrets -p $Profile --scope $scopeName | ConvertFrom-Json
-    $scopeSecrets | ConvertTo-Json -Depth 10 | Out-File "$BackupSecretsDir\$scopeName.json" -Force
+    Write-Host "Backing up secrets for scope: $scopeName"
+    $scopeSecrets = databricks secrets list-secrets --scope $scopeName -p $Profile -o json | ConvertFrom-Json
+    $scopeSecrets | ConvertTo-Json -Depth 10 | Out-File (Join-Path $secretsDir "$scopeName.json") -Force
 }
 
-# =======================
-# 8. Backup Global Init Scripts
-# =======================
-Write-Host "`nBacking up global init scripts ..."
-$initScripts = databricks global-init-scripts list -p $Profile | ConvertFrom-Json
-$initScripts | ConvertTo-Json -Depth 10 | Out-File "$BackupRoot\global_init_scripts.json" -Force
+Write-Host "Secrets backup complete."
 
-# =======================
-# 9. Backup DBFS (user files only)
-# =======================
-Write-Host "`nBacking up DBFS user files ..."
-$DBFSPath = "/user"
-$DBFSTarget = Join-Path $BackupRoot "dbfs"
-New-Item -ItemType Directory -Force -Path $DBFSTarget | Out-Null
+# -----------------------------
+# Backup DBFS
+# -----------------------------
+Write-Host "`nBacking up DBFS files..."
+$DBFSBackupDir = Join-Path $BackupRoot "dbfs"
+New-Item -ItemType Directory -Force -Path $DBFSBackupDir | Out-Null
+
+# Example: backup all user files
 try {
-    databricks fs cp -r $DBFSPath $DBFSTarget -p $Profile
+    databricks fs cp dbfs:/user $DBFSBackupDir --recursive -p $Profile
+    Write-Host "DBFS backup complete."
 } catch {
-    Write-Warning "Error copying DBFS path $DBFSPath. Skipping."
+    Write-Warning "Error backing up DBFS: $_"
 }
 
 Write-Host "`nFULL BACKUP COMPLETE"
