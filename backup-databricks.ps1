@@ -1,106 +1,30 @@
 $timestamp = Get-Date -Format "yyyyMMdd-HHmmss"
-$root = "Databricks-Enterprise-Backup-$timestamp"
-
-Write-Host "Creating backup folder $root"
+$root = "Databricks-Backup-$timestamp"
 
 New-Item -ItemType Directory -Path $root
 
-$folders = @(
-"workspace",
-"jobs",
-"clusters",
-"repos",
-"dbfs",
-"secrets",
-"policies",
-"pools",
-"permissions"
-)
+Write-Host "Exporting workspace archive..."
 
-foreach ($f in $folders) {
-    New-Item -ItemType Directory -Path "$root/$f"
-}
+databricks workspace export / "$root/workspace_backup.dbc" --format DBC
 
-############################################
-Write-Host "Exporting Workspace Notebooks"
-############################################
+Write-Host "Exporting clusters..."
 
-databricks workspace export_dir / "$root/workspace" --overwrite
+databricks clusters list > "$root/clusters.txt"
 
-############################################
-Write-Host "Exporting Jobs"
-############################################
+Write-Host "Exporting jobs..."
 
-$jobs = databricks jobs list --output JSON | ConvertFrom-Json
+databricks jobs list > "$root/jobs.txt"
 
-foreach ($job in $jobs.jobs) {
+Write-Host "Exporting repos..."
 
-    $id = $job.job_id
+databricks repos list > "$root/repos.txt"
 
-    databricks jobs get --job-id $id --output JSON `
-        | Out-File "$root/jobs/job-$id.json"
+Write-Host "Exporting secret scopes..."
 
-}
+databricks secrets list-scopes > "$root/secrets.txt"
 
-############################################
-Write-Host "Exporting Clusters"
-############################################
-
-databricks clusters list --output JSON `
-    | Out-File "$root/clusters/clusters.json"
-
-############################################
-Write-Host "Exporting Repos"
-############################################
-
-databricks repos list --output JSON `
-    | Out-File "$root/repos/repos.json"
-
-############################################
-Write-Host "Exporting Cluster Policies"
-############################################
-
-databricks cluster-policies list --output JSON `
-    | Out-File "$root/policies/policies.json"
-
-############################################
-Write-Host "Exporting Instance Pools"
-############################################
-
-databricks instance-pools list --output JSON `
-    | Out-File "$root/pools/pools.json"
-
-############################################
-Write-Host "Exporting Secret Scopes"
-############################################
-
-$scopes = databricks secrets list-scopes --output JSON | ConvertFrom-Json
-
-foreach ($scope in $scopes.scopes) {
-
-    $name = $scope.name
-
-    databricks secrets list --scope $name --output JSON `
-        | Out-File "$root/secrets/$name.json"
-
-}
-
-############################################
-Write-Host "Exporting Global Init Scripts"
-############################################
-
-databricks global-init-scripts list --output JSON `
-    | Out-File "$root/global-init-scripts.json"
-
-############################################
-Write-Host "Exporting DBFS"
-############################################
+Write-Host "Exporting DBFS..."
 
 databricks fs cp -r dbfs:/ "$root/dbfs"
 
-############################################
-Write-Host "Backup Completed"
-############################################
-
-Write-Host "Backup location:"
-Write-Host "$root"
+Write-Host "Backup completed at $root"
