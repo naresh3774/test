@@ -1,116 +1,106 @@
-#==============================
-# Enterprise Backup for Azure Databricks (Windows)
-# Works with MCP-enabled workspaces
-#==============================
-
 param(
     [string]$PROFILE_NAME = "dev-databricks"
 )
 
 $timestamp = Get-Date -Format "yyyyMMdd-HHmmss"
-$BACKUP = "Databricks-Enterprise-Backup-$timestamp"
-
-Write-Host "`nCreating backup directory $BACKUP..."
-New-Item -ItemType Directory -Force -Path $BACKUP | Out-Null
+$BACKUP_DIR = "Databricks-FULL-Backup-$timestamp"
+Write-Host "`nCreating backup directory: $BACKUP_DIR"
+New-Item -ItemType Directory -Force -Path $BACKUP_DIR | Out-Null
 
 #---------------------------------------
-# Workspace Notebooks (DBC format)
+# 1. Workspace Notebooks (DBC format)
 #---------------------------------------
 Write-Host "`nBacking up workspace notebooks..."
-databricks workspace export-dir / "$BACKUP/workspace" `
-    --format DBC `
-    --overwrite `
-    -p $PROFILE_NAME
+$workspaceBackup = Join-Path $BACKUP_DIR "workspace"
+New-Item -ItemType Directory -Force -Path $workspaceBackup | Out-Null
+databricks workspace export-dir "/" $workspaceBackup -p $PROFILE_NAME --format DBC --overwrite
 
 #---------------------------------------
-# Jobs
+# 2. Jobs
 #---------------------------------------
 Write-Host "`nBacking up jobs..."
-databricks jobs list -p $PROFILE_NAME -o json | Out-File "$BACKUP/jobs.json"
+$jobs = databricks jobs list -p $PROFILE_NAME -o json
+$jobs | Out-File (Join-Path $BACKUP_DIR "jobs.json")
 
 #---------------------------------------
-# Clusters
+# 3. Clusters
 #---------------------------------------
 Write-Host "`nBacking up clusters..."
-databricks clusters list -p $PROFILE_NAME -o json | Out-File "$BACKUP/clusters.json"
+$clusters = databricks clusters list -p $PROFILE_NAME -o json
+$clusters | Out-File (Join-Path $BACKUP_DIR "clusters.json")
 
 #---------------------------------------
-# Repos
+# 4. Repos
 #---------------------------------------
 Write-Host "`nBacking up repos..."
-databricks repos list -p $PROFILE_NAME -o json | Out-File "$BACKUP/repos.json"
+$repos = databricks repos list -p $PROFILE_NAME -o json
+$repos | Out-File (Join-Path $BACKUP_DIR "repos.json")
 
 #---------------------------------------
-# Cluster Policies
+# 5. Cluster Policies
 #---------------------------------------
 Write-Host "`nBacking up cluster policies..."
-databricks cluster-policies list -p $PROFILE_NAME -o json | Out-File "$BACKUP/cluster-policies.json"
+$policies = databricks cluster-policies list -p $PROFILE_NAME -o json
+$policies | Out-File (Join-Path $BACKUP_DIR "cluster-policies.json")
 
 #---------------------------------------
-# Instance Pools
+# 6. Instance Pools
 #---------------------------------------
 Write-Host "`nBacking up instance pools..."
-databricks instance-pools list -p $PROFILE_NAME -o json | Out-File "$BACKUP/instance-pools.json"
+$pools = databricks instance-pools list -p $PROFILE_NAME -o json
+$pools | Out-File (Join-Path $BACKUP_DIR "instance-pools.json")
 
 #---------------------------------------
-# Global Init Scripts
+# 7. Global Init Scripts
 #---------------------------------------
 Write-Host "`nBacking up global init scripts..."
-databricks global-init-scripts list -p $PROFILE_NAME -o json | Out-File "$BACKUP/global-init-scripts.json"
+$initScripts = databricks global-init-scripts list -p $PROFILE_NAME -o json
+$initScripts | Out-File (Join-Path $BACKUP_DIR "global-init-scripts.json")
 
 #---------------------------------------
-# Secret Scopes
+# 8. Secret Scopes & Keys
 #---------------------------------------
 Write-Host "`nBacking up secret scopes..."
-$scopes = databricks secrets list-scopes -p $PROFILE_NAME -o json | ConvertFrom-Json
+$scopesJson = databricks secrets list-scopes -p $PROFILE_NAME -o json | ConvertFrom-Json
+$secretsDir = Join-Path $BACKUP_DIR "secrets"
+New-Item -ItemType Directory -Force -Path $secretsDir | Out-Null
 
-if ($scopes.scopes) {
-    foreach ($scope in $scopes.scopes) {
-        $scopeName = $scope.name
-        Write-Host "Exporting scope: $scopeName"
-        $scopeDir="$BACKUP/secrets/$scopeName"
-        New-Item -ItemType Directory -Force -Path $scopeDir | Out-Null
-        databricks secrets list-secrets $scopeName -p $PROFILE_NAME -o json | Out-File "$scopeDir/secrets.json"
-    }
-} else {
-    Write-Host "No secret scopes found."
+foreach ($scope in $scopesJson.scopes) {
+    $scopeName = $scope.name
+    Write-Host "Backing up scope: $scopeName"
+    $scopePath = Join-Path $secretsDir $scopeName
+    New-Item -ItemType Directory -Force -Path $scopePath | Out-Null
+    $keysJson = databricks secrets list-secrets $scopeName -p $PROFILE_NAME -o json
+    $keysJson | Out-File (Join-Path $scopePath "secrets.json")
 }
 
 #---------------------------------------
-# DBFS Backup (User files)
+# 9. DBFS Backup
 #---------------------------------------
-Write-Host "`nBacking up DBFS..."
-New-Item -ItemType Directory -Force -Path "$BACKUP/dbfs" | Out-Null
-
+Write-Host "`nBacking up DBFS /user..."
+$dbfsUser = Join-Path $BACKUP_DIR "dbfs\user"
+New-Item -ItemType Directory -Force -Path $dbfsUser | Out-Null
 try {
-    databricks fs cp dbfs:/user "$BACKUP/dbfs/user" --recursive -p $PROFILE_NAME
+    databricks fs cp dbfs:/user $dbfsUser --recursive -p $PROFILE_NAME
 } catch {
-    Write-Host "DBFS /user not accessible."
+    Write-Host "DBFS /user path not accessible"
 }
 
+Write-Host "`nBacking up DBFS /FileStore..."
+$dbfsFileStore = Join-Path $BACKUP_DIR "dbfs\FileStore"
+New-Item -ItemType Directory -Force -Path $dbfsFileStore | Out-Null
 try {
-    databricks fs cp dbfs:/FileStore "$BACKUP/dbfs/FileStore" --recursive -p $PROFILE_NAME
+    databricks fs cp dbfs:/FileStore $dbfsFileStore --recursive -p $PROFILE_NAME
 } catch {
-    Write-Host "DBFS /FileStore does not exist. Skipping."
+    Write-Host "DBFS /FileStore path does not exist. Skipping."
 }
 
 #---------------------------------------
-# Mount Points Metadata (Optional)
+# 10. Mount Points metadata
 #---------------------------------------
 Write-Host "`nBacking up mount points metadata..."
-databricks fs mounts -p $PROFILE_NAME -o json | Out-File "$BACKUP/mounts.json"
+$mounts = databricks fs mounts -p $PROFILE_NAME -o json
+$mounts | Out-File (Join-Path $BACKUP_DIR "mounts.json")
 
-#---------------------------------------
-# Advanced: Unity Catalog / Metastore Backup
-#---------------------------------------
-Write-Host "`nBacking up Hive Metastore (Unity Catalog) metadata..."
-# NOTE: Requires Databricks REST API token with UC permissions
-# Export catalogs, schemas, and tables metadata
-# Here, just placeholder JSON export
-# You need to write REST API calls to fetch catalogs and schemas
-
-#---------------------------------------
-# Backup Complete
-#---------------------------------------
-Write-Host "`nBACKUP COMPLETE"
-Write-Host "Backup location: $BACKUP"
+Write-Host "`nFULL BACKUP COMPLETE"
+Write-Host "Backup location: $BACKUP_DIR"
