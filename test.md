@@ -1,3 +1,11 @@
+az resource show \
+--name <workspace-name> \
+--resource-group <rg> \
+--resource-type Microsoft.Databricks/workspaces \
+> workspace_arm_config.json
+
+
+
 pip install databricks-cli
 
 databricks configure --token
