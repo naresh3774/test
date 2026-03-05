@@ -91,13 +91,12 @@ Out-File "$BACKUP/init_scripts.json"
 # DBFS
 ####################################
 
-Write-Host "Backing up DBFS..."
+Write-Host "Backing up DBFS user files..."
 
 New-Item -ItemType Directory "$BACKUP/dbfs"
 
 databricks fs cp -r dbfs:/FileStore "$BACKUP/dbfs/FileStore" -p $PROFILE
 databricks fs cp -r dbfs:/mnt "$BACKUP/dbfs/mnt" -p $PROFILE
-databricks fs cp -r dbfs:/user "$BACKUP/dbfs/user" -p $PROFILE
 
 ####################################
 
