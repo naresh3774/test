@@ -1,52 +1,94 @@
 $PROFILE="dev-databricks"
 
-$DATE=Get-Date -Format "yyyyMMdd-HHmmss"
-$BACKUP="Databricks-Enterprise-Backup-$DATE"
+$timestamp = Get-Date -Format "yyyyMMdd-HHmmss"
+$BACKUP="Databricks-Enterprise-Backup-$timestamp"
 
 Write-Host "Creating backup directory $BACKUP"
-New-Item -ItemType Directory -Path $BACKUP
 
-#################################################
-# WORKSPACE
-#################################################
+New-Item -ItemType Directory -Path $BACKUP
+New-Item -ItemType Directory -Path "$BACKUP/workspace"
+New-Item -ItemType Directory -Path "$BACKUP/dbfs"
+New-Item -ItemType Directory -Path "$BACKUP/secrets"
+
+#########################################
+# Workspace Notebooks
+#########################################
 
 Write-Host "Exporting workspace notebooks..."
 
-databricks workspace export-dir / "$BACKUP/workspace" -p $PROFILE
+databricks workspace export-dir / "$BACKUP/workspace" `
+-p $PROFILE `
+--overwrite
 
-#################################################
-# JOBS
-#################################################
+#########################################
+# Jobs
+#########################################
 
 Write-Host "Exporting jobs..."
 
-databricks jobs list -p $PROFILE -o json > "$BACKUP/jobs.json"
+databricks jobs list `
+-p $PROFILE `
+-o json > "$BACKUP/jobs.json"
 
-#################################################
-# CLUSTERS
-#################################################
+#########################################
+# Clusters
+#########################################
 
 Write-Host "Exporting clusters..."
 
-databricks clusters list -p $PROFILE -o json > "$BACKUP/clusters.json"
+databricks clusters list `
+-p $PROFILE `
+-o json > "$BACKUP/clusters.json"
 
-#################################################
-# REPOS
-#################################################
+#########################################
+# Repos
+#########################################
 
 Write-Host "Exporting repos..."
 
-databricks repos list -p $PROFILE -o json > "$BACKUP/repos.json"
+databricks repos list `
+-p $PROFILE `
+-o json > "$BACKUP/repos.json"
 
-#################################################
-# SECRET SCOPES
-#################################################
+#########################################
+# Instance Pools
+#########################################
 
-Write-Host "Exporting secrets..."
+Write-Host "Exporting instance pools..."
 
-New-Item -ItemType Directory "$BACKUP/secrets"
+databricks instance-pools list `
+-p $PROFILE `
+-o json > "$BACKUP/instance_pools.json"
 
-$scopes = databricks secrets list-scopes -p $PROFILE -o json | ConvertFrom-Json
+#########################################
+# Cluster Policies
+#########################################
+
+Write-Host "Exporting cluster policies..."
+
+databricks cluster-policies list `
+-p $PROFILE `
+-o json > "$BACKUP/cluster_policies.json"
+
+#########################################
+# Global Init Scripts
+#########################################
+
+Write-Host "Exporting global init scripts..."
+
+databricks global-init-scripts list `
+-p $PROFILE `
+-o json > "$BACKUP/global_init_scripts.json"
+
+#########################################
+# Secret Scopes
+#########################################
+
+Write-Host "Exporting secret scopes..."
+
+$scopes = databricks secrets list-scopes `
+-p $PROFILE `
+-o json | ConvertFrom-Json
 
 foreach ($scope in $scopes.scopes) {
 
@@ -54,53 +96,28 @@ foreach ($scope in $scopes.scopes) {
 
     Write-Host "Exporting secrets from scope $scopeName"
 
-    databricks secrets list-secrets $scopeName -p $PROFILE -o json > "$BACKUP/secrets/$scopeName.json"
+    databricks secrets list-secrets $scopeName `
+    -p $PROFILE `
+    -o json > "$BACKUP/secrets/$scopeName.json"
 
 }
 
-#################################################
-# INSTANCE POOLS
-#################################################
-
-Write-Host "Exporting instance pools..."
-
-databricks instance-pools list -p $PROFILE -o json > "$BACKUP/instance_pools.json"
-
-#################################################
-# CLUSTER POLICIES
-#################################################
-
-Write-Host "Exporting cluster policies..."
-
-databricks cluster-policies list -p $PROFILE -o json > "$BACKUP/cluster_policies.json"
-
-#################################################
-# GLOBAL INIT SCRIPTS
-#################################################
-
-Write-Host "Exporting global init scripts..."
-
-databricks global-init-scripts list -p $PROFILE -o json > "$BACKUP/init_scripts.json"
-
-#################################################
-# DBFS USER FILES
-#################################################
+#########################################
+# DBFS (safe locations only)
+#########################################
 
 Write-Host "Exporting DBFS user files..."
 
-New-Item -ItemType Directory "$BACKUP/dbfs"
+databricks fs cp `
+dbfs:/user `
+"$BACKUP/dbfs/user" `
+--recursive `
+-p $PROFILE
 
-try {
-    databricks fs cp -r dbfs:/FileStore "$BACKUP/dbfs/FileStore" -p $PROFILE
-} catch {}
+#########################################
 
-try {
-    databricks fs cp -r dbfs:/mnt "$BACKUP/dbfs/mnt" -p $PROFILE
-} catch {}
-
-#################################################
-
-Write-Host "--------------------------------"
+Write-Host ""
+Write-Host "================================="
 Write-Host "ENTERPRISE BACKUP COMPLETED"
 Write-Host "Backup location: $BACKUP"
-Write-Host "--------------------------------"
+Write-Host "================================="
