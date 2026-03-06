@@ -1,38 +1,33 @@
 param (
     [string]$DatabricksProfile = "dev-databricks",
-    [string]$BackupRoot = "$(Join-Path $PWD ('Databricks-Full-Backup-' + (Get-Date -Format 'yyyyMMdd-HHmmss')))"
+    [string]$BackupRoot = "$(Join-Path $PWD ('Databricks-Enterprise-Backup-' + (Get-Date -Format 'yyyyMMdd-HHmmss')))"
 )
 
-Write-Host "Databricks Ultimate Backup Starting"
+Write-Host "Databricks Enterprise Backup Starting"
 Write-Host "Profile: $DatabricksProfile"
-Write-Host "Backup root folder: $BackupRoot"
+Write-Host "Backup folder: $BackupRoot"
 
 # Create backup folder
 New-Item -ItemType Directory -Force -Path $BackupRoot | Out-Null
 
-# === Helper Functions ===
-
-function Export-WorkspaceDBC {
+# --- Helper functions ---
+function Export-WorkspaceSafe {
     param([string]$SourcePath, [string]$TargetPath)
     try {
-        # Correct CLI command with hyphen
         databricks workspace export-dir $SourcePath $TargetPath --profile $DatabricksProfile
-        Write-Host "Exported workspace path: $SourcePath"
     } catch {
-        Write-Warning "Failed to export workspace path $SourcePath. Error: $_"
+        Write-Warning "Failed to export workspace path $SourcePath. Skipping. Error: $_"
     }
 }
 
 function Copy-DbfsSafe {
     param([string]$DbfsPath, [string]$LocalPath)
     try {
-        # Check if DBFS path exists
-        $exists = databricks fs ls $DbfsPath --profile $DatabricksProfile -o JSON 2>$null
-        if ($LASTEXITCODE -eq 0) {
+        $exists = databricks fs ls $DbfsPath --profile $DatabricksProfile | Out-Null
+        if ($?) {
             databricks fs cp -r $DbfsPath $LocalPath --profile $DatabricksProfile
-            Write-Host "Copied DBFS path: $DbfsPath"
         } else {
-            Write-Warning "DBFS path $DbfsPath does not exist. Skipping..."
+            Write-Warning "DBFS path $DbfsPath does not exist, skipping..."
         }
     } catch {
         Write-Warning "Failed to copy DBFS path $DbfsPath. Error: $_"
@@ -42,68 +37,89 @@ function Copy-DbfsSafe {
 function Export-JsonSafe {
     param([string]$Command, [string]$TargetFile)
     try {
-        $result = Invoke-Expression $Command
-        if ($result) {
-            $result | Out-File -FilePath $TargetFile -Encoding UTF8
-            Write-Host "Exported JSON: $TargetFile"
-        } else {
-            Write-Warning "No data returned for command: $Command"
-        }
+        Invoke-Expression $Command | Out-File -FilePath $TargetFile -Encoding UTF8
     } catch {
         Write-Warning "Failed to export JSON for command '$Command'. Error: $_"
     }
 }
 
-# === BACKUP WORKSPACE (as DBC) ===
+# === BACKUP WORKSPACE (.dbc) ===
 $WorkspaceBackup = Join-Path $BackupRoot "workspace"
 New-Item -ItemType Directory -Force -Path $WorkspaceBackup | Out-Null
 Write-Host "Exporting workspace notebooks..."
-Export-WorkspaceDBC "/" $WorkspaceBackup
+Export-WorkspaceSafe "/" (Join-Path $WorkspaceBackup "all_notebooks.dbc")
 
 # === BACKUP DBFS ===
 $DbfsBackup = Join-Path $BackupRoot "dbfs"
 New-Item -ItemType Directory -Force -Path $DbfsBackup | Out-Null
+Write-Host "Backing up DBFS /user..."
+Copy-DbfsSafe "/user" (Join-Path $DbfsBackup "user")
+Write-Host "Backing up DBFS /FileStore..."
+Copy-DbfsSafe "/FileStore" (Join-Path $DbfsBackup "FileStore")
+Write-Host "Backing up DBFS /mnt..."
+Copy-DbfsSafe "/mnt" (Join-Path $DbfsBackup "mnt")
 
-# Typical DBFS paths
-$DbfsPaths = @("/user", "/FileStore", "/mnt")
-foreach ($path in $DbfsPaths) {
-    $localPath = Join-Path $DbfsBackup ($path.TrimStart("/"))
-    Copy-DbfsSafe $path $localPath
-}
+# === BACKUP JOBS ===
+$JobsBackup = Join-Path $BackupRoot "jobs_full.json"
+Write-Host "Exporting jobs..."
+Export-JsonSafe "databricks jobs list --profile $DatabricksProfile -o JSON" $JobsBackup
 
-# === BACKUP JOBS, CLUSTERS, POLICIES, INSTANCE POOLS, GLOBAL INIT SCRIPTS ===
-Export-JsonSafe "databricks jobs list --profile $DatabricksProfile" (Join-Path $BackupRoot "jobs.json")
-Export-JsonSafe "databricks clusters list --profile $DatabricksProfile" (Join-Path $BackupRoot "clusters.json")
-Export-JsonSafe "databricks cluster-policies list --profile $DatabricksProfile" (Join-Path $BackupRoot "cluster-policies.json")
-Export-JsonSafe "databricks instance-pools list --profile $DatabricksProfile" (Join-Path $BackupRoot "instance-pools.json")
-Export-JsonSafe "databricks global-init-scripts list --profile $DatabricksProfile" (Join-Path $BackupRoot "global-init-scripts.json")
-
-# === BACKUP SECRET SCOPES (names only) ===
-Export-JsonSafe "databricks secrets list-scopes --profile $DatabricksProfile" (Join-Path $BackupRoot "secrets.json")
-
-# === BACKUP REPOS ===
-Export-JsonSafe "databricks repos list --profile $DatabricksProfile" (Join-Path $BackupRoot "repos.json")
-
-# === BACKUP CLUSTER LIBRARIES ===
-$ClustersJson = Join-Path $BackupRoot "clusters.json"
-if (Test-Path $ClustersJson) {
+# === BACKUP CLUSTERS & LIBRARIES ===
+$ClustersBackup = Join-Path $BackupRoot "clusters_full.json"
+Write-Host "Exporting full cluster configurations..."
+$ClustersSummary = databricks clusters list --profile $DatabricksProfile -o JSON | ConvertFrom-Json
+$FullClusters = @()
+foreach ($c in $ClustersSummary) {
     try {
-        $clusters = Get-Content $ClustersJson | ConvertFrom-Json
-        $LibBackup = Join-Path $BackupRoot "cluster-libraries"
-        New-Item -ItemType Directory -Force -Path $LibBackup | Out-Null
-
-        foreach ($c in $clusters) {
-            $clusterId = $c.cluster_id
-            $libsFile = Join-Path $LibBackup "$($clusterId)_libraries.json"
-            Export-JsonSafe "databricks libraries list --cluster-id $clusterId --profile $DatabricksProfile" $libsFile
-        }
+        $full = databricks clusters get --cluster-id $c.cluster_id --profile $DatabricksProfile -o JSON
+        $FullClusters += $full
     } catch {
-        Write-Warning "Failed to backup cluster libraries: $_"
+        Write-Warning "Failed to get cluster $($c.cluster_id): $_"
     }
 }
+$FullClusters | Out-File -FilePath $ClustersBackup -Encoding UTF8
 
-# === COMPRESS EVERYTHING INTO SINGLE ZIP ===
+# === BACKUP CLUSTER POLICIES ===
+$PoliciesBackup = Join-Path $BackupRoot "cluster-policies_full.json"
+Write-Host "Exporting cluster policies..."
+$PoliciesSummary = databricks cluster-policies list --profile $DatabricksProfile -o JSON | ConvertFrom-Json
+$FullPolicies = @()
+foreach ($p in $PoliciesSummary) {
+    try {
+        $full = databricks cluster-policies get --policy-id $p.policy_id --profile $DatabricksProfile -o JSON
+        $FullPolicies += $full
+    } catch {
+        Write-Warning "Failed to get policy $($p.policy_id): $_"
+    }
+}
+$FullPolicies | Out-File -FilePath $PoliciesBackup -Encoding UTF8
+
+# === BACKUP SECRET SCOPES (names only) ===
+$SecretsBackup = Join-Path $BackupRoot "secrets.json"
+Write-Host "Exporting secret scopes..."
+Export-JsonSafe "databricks secrets list-scopes --profile $DatabricksProfile -o JSON" $SecretsBackup
+
+# === BACKUP USERS & GROUPS ===
+$UsersBackup = Join-Path $BackupRoot "users_full.json"
+Write-Host "Exporting users (SCIM API)..."
+Export-JsonSafe "databricks scim users list --profile $DatabricksProfile -o JSON" $UsersBackup
+
+$GroupsBackup = Join-Path $BackupRoot "groups_full.json"
+Write-Host "Exporting groups (SCIM API)..."
+Export-JsonSafe "databricks scim groups list --profile $DatabricksProfile -o JSON" $GroupsBackup
+
+# === BACKUP INSTANCE POOLS ===
+$PoolsBackup = Join-Path $BackupRoot "instance-pools_full.json"
+Write-Host "Exporting instance pools..."
+Export-JsonSafe "databricks instance-pools list --profile $DatabricksProfile -o JSON" $PoolsBackup
+
+# === BACKUP GLOBAL INIT SCRIPTS ===
+$InitScriptsBackup = Join-Path $BackupRoot "global-init-scripts.json"
+Write-Host "Exporting global init scripts..."
+Export-JsonSafe "databricks global-init-scripts list --profile $DatabricksProfile -o JSON" $InitScriptsBackup
+
+# === COMPRESS EVERYTHING INTO A SINGLE ZIP ===
 $ZipFile = "$BackupRoot.zip"
 Compress-Archive -Path $BackupRoot\* -DestinationPath $ZipFile -Force
-Write-Host "`nUltimate Databricks backup complete!"
-Write-Host "Backup ZIP location: $ZipFile"
+Write-Host "Ultimate Databricks backup complete!"
+Write-Host "Backup location: $ZipFile"
