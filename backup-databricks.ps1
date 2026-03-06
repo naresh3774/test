@@ -154,24 +154,14 @@ catch {
 # DBFS BACKUP
 # ---------------------------------------------------
 
-Write-Host "Backing up DBFS /FileStore ..."
+Write-Host "Checking DBFS FileStore..."
 
 try {
-    databricks fs cp -r dbfs:/FileStore $DbfsDir `
-        --profile $DbProfile
+    databricks fs ls dbfs:/FileStore --profile $DbProfile | Out-Null
+    databricks fs cp -r dbfs:/FileStore $DbfsDir --profile $DbProfile
 }
 catch {
-    Write-Warning "FileStore not found"
-}
-
-Write-Host "Backing up DBFS /user ..."
-
-try {
-    databricks fs cp -r dbfs:/user $DbfsDir `
-        --profile $DbProfile
-}
-catch {
-    Write-Warning "/user path not found"
+    Write-Host "FileStore not present, skipping..."
 }
 
 # ---------------------------------------------------
