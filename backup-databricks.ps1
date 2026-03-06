@@ -95,13 +95,19 @@ $ReposBackup = Join-Path $BackupRoot "repos.json"
 Run-SafeCommand "databricks repos list --profile $DatabricksProfile" $ReposBackup
 
 # === BACKUP CLUSTER LIBRARIES ===
-$ClustersList = databricks clusters list --profile $DatabricksProfile | ConvertFrom-Json
-foreach ($cluster in $ClustersList) {
-    $ClusterId = $cluster.cluster_id
-    $ClusterNameSafe = $cluster.cluster_name -replace '[^a-zA-Z0-9_-]', '_'
-    $LibFile = Join-Path $BackupRoot ("cluster-" + $ClusterNameSafe + "-libraries.json")
-    Write-Host "Exporting libraries for cluster $ClusterNameSafe ..."
-    Run-SafeCommand "databricks libraries list --cluster-id $ClusterId --profile $DatabricksProfile" $LibFile
+$ClustersJson = Join-Path $BackupRoot "clusters.json"
+# Save raw output without parsing
+databricks clusters list --profile $DatabricksProfile > $ClustersJson
+
+# Extract cluster IDs manually without ConvertFrom-Json
+$ClusterIds = databricks clusters list --profile $DatabricksProfile | ForEach-Object {
+    if ($_ -match '"cluster_id":\s*"([^"]+)"') { $Matches[1] }
+}
+
+foreach ($ClusterId in $ClusterIds) {
+    $LibFile = Join-Path $BackupRoot ("cluster-" + $ClusterId + "-libraries.json")
+    Write-Host "Exporting libraries for cluster $ClusterId ..."
+    databricks libraries list --cluster-id $ClusterId --profile $DatabricksProfile > $LibFile
 }
 
 # === COMPRESS BACKUP INTO SINGLE ZIP ===
