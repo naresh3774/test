@@ -1,121 +1,83 @@
-$profile = "dev-databricks"
+param (
+    [string]$DatabricksProfile = "dev-databricks",
+    [string]$BackupRoot = "$(Join-Path $PWD ('Databricks-Enterprise-Backup-' + (Get-Date -Format 'yyyyMMdd-HHmmss')))"
+)
 
-$timestamp = Get-Date -Format "yyyyMMdd-HHmmss"
-$backupRoot = "C:\Users\NareshSharma\workspace\databricks"
-$backupDir = "$backupRoot\Databricks-Full-Backup-$timestamp"
+# Create backup root folder
+New-Item -ItemType Directory -Force -Path $BackupRoot | Out-Null
+Write-Host "Backup root: $BackupRoot"
 
-Write-Host "Databricks Enterprise Backup Starting"
-Write-Host "Profile: $profile"
-Write-Host "Backup folder: $backupDir"
+# Helper function to export workspace
+function Export-WorkspaceComplete {
+    param([string]$SourcePath, [string]$LocalFolder)
 
-New-Item -ItemType Directory -Force -Path $backupDir | Out-Null
+    New-Item -ItemType Directory -Force -Path $LocalFolder | Out-Null
 
-# folders
-$workspaceDir = "$backupDir\workspace"
-$configDir = "$backupDir\configs"
-$dbfsDir = "$backupDir\dbfs"
+    try { databricks workspace export-dir $SourcePath $LocalFolder --profile $DatabricksProfile -o } catch { Write-Warning "Failed export folder $SourcePath. $_" }
 
-New-Item -ItemType Directory -Force -Path $workspaceDir | Out-Null
-New-Item -ItemType Directory -Force -Path $configDir | Out-Null
-New-Item -ItemType Directory -Force -Path $dbfsDir | Out-Null
-
-############################################################
-# Workspace Backup (.DBC)
-############################################################
-
-Write-Host "Exporting workspace as DBC ..."
-
-databricks workspace export-dir / $workspaceDir --profile $profile
-
-############################################################
-# Jobs
-############################################################
-
-Write-Host "Exporting jobs ..."
-
-$jobs = databricks jobs list --output JSON --profile $profile
-$jobs | Out-File "$configDir\jobs.json"
-
-############################################################
-# Clusters
-############################################################
-
-Write-Host "Exporting clusters ..."
-
-$clusters = databricks clusters list --output JSON --profile $profile
-$clusters | Out-File "$configDir\clusters.json"
-
-############################################################
-# Cluster Policies
-############################################################
-
-Write-Host "Exporting cluster policies ..."
-
-$policies = databricks cluster-policies list --output JSON --profile $profile
-$policies | Out-File "$configDir\cluster-policies.json"
-
-############################################################
-# Secret Scopes
-############################################################
-
-Write-Host "Exporting secret scopes ..."
-
-$secrets = databricks secrets list-scopes --output JSON --profile $profile
-$secrets | Out-File "$configDir\secret-scopes.json"
-
-############################################################
-# Repos
-############################################################
-
-Write-Host "Exporting repos ..."
-
-$repos = databricks repos list --output JSON --profile $profile
-$repos | Out-File "$configDir\repos.json"
-
-############################################################
-# Instance Pools
-############################################################
-
-Write-Host "Exporting instance pools ..."
-
-$pools = databricks instance-pools list --output JSON --profile $profile
-$pools | Out-File "$configDir\instance-pools.json"
-
-############################################################
-# Global Init Scripts
-############################################################
-
-Write-Host "Exporting global init scripts ..."
-
-$init = databricks global-init-scripts list --output JSON --profile $profile
-$init | Out-File "$configDir\global-init-scripts.json"
-
-############################################################
-# DBFS Backup
-############################################################
-
-Write-Host "Checking DBFS root ..."
-
-try {
-    databricks fs ls dbfs:/ --profile $profile | Out-Null
-    Write-Host "Exporting DBFS files ..."
-    databricks fs cp -r dbfs:/ $dbfsDir --profile $profile
-}
-catch {
-    Write-Host "DBFS not accessible, skipping"
+    try {
+        $items = databricks workspace list $SourcePath --profile $DatabricksProfile -o JSON | ConvertFrom-Json
+        foreach ($item in $items) {
+            if ($item.object_type -eq "NOTEBOOK") {
+                $dbcFile = Join-Path $LocalFolder ($item.path.TrimStart('/') -replace '/', '_') + ".dbc"
+                databricks workspace export $item.path $dbcFile --profile $DatabricksProfile --format DBC
+            } elseif ($item.object_type -eq "DIRECTORY") {
+                $subFolder = Join-Path $LocalFolder ($item.path.TrimStart('/') -replace '/', '_')
+                Export-WorkspaceComplete $item.path $subFolder
+            }
+        }
+    } catch { Write-Warning "Failed notebook export: $_" }
 }
 
-############################################################
-# Compress Backup
-############################################################
+# Backup DBFS path
+function Backup-Dbfs { param([string]$DbfsPath, [string]$LocalFolder)
+    try { databricks fs cp -r $DbfsPath $LocalFolder --profile $DatabricksProfile } catch { Write-Warning "Skipping DBFS ${DbfsPath}: $_" }
+}
 
-Write-Host "Compressing backup ..."
+# Export JSON config
+function Export-Json { param([string]$Command, [string]$TargetFile)
+    try { Invoke-Expression $Command | Out-File -FilePath $TargetFile -Encoding UTF8 } catch { Write-Warning "Failed JSON export '$Command': $_" }
+}
 
-$zipPath = "$backupDir.zip"
+# --- Workspace ---
+$WorkspaceFolder = Join-Path $BackupRoot "workspace"
+Export-WorkspaceComplete "/" $WorkspaceFolder
 
-Compress-Archive -Path $backupDir -DestinationPath $zipPath
+# --- DBFS ---
+$DbfsFolder = Join-Path $BackupRoot "dbfs"
+Backup-Dbfs "/user" (Join-Path $DbfsFolder "user")
+Backup-Dbfs "/FileStore" (Join-Path $DbfsFolder "FileStore")
 
-Write-Host ""
-Write-Host "BACKUP COMPLETE"
-Write-Host "Backup ZIP:"
-Write-Host $zipPath
+# --- Jobs, Clusters, Policies, Pools, Init Scripts ---
+Export-Json "databricks jobs list --profile $DatabricksProfile -o JSON" (Join-Path $BackupRoot "jobs.json")
+$ClustersJson = Join-Path $BackupRoot "clusters.json"
+Export-Json "databricks clusters list --profile $DatabricksProfile -o JSON" $ClustersJson
+Export-Json "databricks cluster-policies list --profile $DatabricksProfile -o JSON" (Join-Path $BackupRoot "cluster-policies.json")
+Export-Json "databricks instance-pools list --profile $DatabricksProfile -o JSON" (Join-Path $BackupRoot "instance-pools.json")
+Export-Json "databricks global-init-scripts list --profile $DatabricksProfile -o JSON" (Join-Path $BackupRoot "global-init-scripts.json")
+
+# --- Cluster Libraries ---
+$LibrariesBackup = Join-Path $BackupRoot "cluster-libraries"
+New-Item -ItemType Directory -Force -Path $LibrariesBackup | Out-Null
+$clusters = (Get-Content $ClustersJson | ConvertFrom-Json)
+foreach ($cluster in $clusters) {
+    try {
+        $libFile = Join-Path $LibrariesBackup ($cluster.cluster_id + ".json")
+        Export-Json "databricks libraries list --cluster-id $($cluster.cluster_id) --profile $DatabricksProfile -o JSON" $libFile
+    } catch { Write-Warning "Failed libraries for cluster $($cluster.cluster_id)" }
+}
+
+# --- Secret Scopes ---
+Export-Json "databricks secrets list-scopes --profile $DatabricksProfile -o JSON" (Join-Path $BackupRoot "secret-scopes.json")
+
+# --- Users and Groups (requires admin token) ---
+Export-Json "databricks scim list-users --profile $DatabricksProfile -o JSON" (Join-Path $BackupRoot "users.json")
+Export-Json "databricks scim list-groups --profile $DatabricksProfile -o JSON" (Join-Path $BackupRoot "groups.json")
+
+# --- Repos ---
+Export-Json "databricks repos list --profile $DatabricksProfile -o JSON" (Join-Path $BackupRoot "repos.json")
+
+# --- Compress ---
+$ZipFile = "$BackupRoot.zip"
+Compress-Archive -Path $BackupRoot\* -DestinationPath $ZipFile
+Write-Host "Ultimate backup complete: $ZipFile"
